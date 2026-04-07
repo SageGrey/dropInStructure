@@ -1900,8 +1900,8 @@
     const trigger = document.getElementById('info-trigger');
     if (!trigger || !section) return;
     let open = false;
-    function show() { open=true; section.style.maxHeight='800px'; section.style.opacity='1'; label.style.opacity='1'; }
-    function hide() { open=false; section.style.maxHeight='0'; section.style.opacity='0'; label.style.opacity='0.7'; }
+    function show() { open=true; section.style.maxHeight='800px'; section.style.opacity='1'; section.style.overflow='visible'; label.style.opacity='1'; }
+    function hide() { open=false; section.style.overflow='hidden'; section.style.maxHeight='0'; section.style.opacity='0'; label.style.opacity='0.7'; }
     trigger.addEventListener('click', () => open ? hide() : show());
   });
 </script>
