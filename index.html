@@ -2502,6 +2502,63 @@
         white-space: nowrap;
         margin-top: 2px;
       }
+      /* Tag editor popup */
+      .tag-editor-overlay {
+        position: fixed; inset: 0; z-index: 9999;
+        background: rgba(48,28,29,0.55);
+        display: flex; align-items: center; justify-content: center;
+        padding: 16px;
+      }
+      .tag-editor-popup {
+        background: #FFFEE7; color: #301C1D;
+        border: 2px solid #301C1D;
+        width: 100%; max-width: 380px; max-height: 85vh;
+        overflow-y: auto; padding: 18px 16px 14px;
+        font-family: 'Space Mono', monospace;
+      }
+      .tag-editor-popup h3 {
+        font-family: 'Space Mono', monospace;
+        font-size: 13px; font-weight: 700;
+        letter-spacing: 0.1em; text-transform: uppercase;
+        margin: 0 0 6px; color: #301C1D;
+      }
+      .tag-editor-popup .te-item-name {
+        font-size: 13px; color: #301C1D; margin-bottom: 14px;
+        padding-bottom: 10px; border-bottom: 1px solid rgba(48,28,29,0.15);
+        line-height: 1.4;
+      }
+      .tag-editor-popup .te-section { margin-bottom: 12px; }
+      .tag-editor-popup .te-section-label {
+        font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+        color: rgba(48,28,29,0.5); margin-bottom: 5px;
+      }
+      .tag-editor-popup .te-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+      .tag-editor-popup .te-pill {
+        border: 1.5px solid rgba(48,28,29,0.2);
+        background: none; color: #301C1D;
+        font-family: 'Space Mono', monospace;
+        font-size: 11px; padding: 5px 11px;
+        cursor: pointer; transition: all 0.12s;
+        white-space: nowrap;
+      }
+      .tag-editor-popup .te-pill:hover { border-color: #301C1D; }
+      .tag-editor-popup .te-pill.te-active {
+        background: var(--te-accent, #301C1D);
+        color: var(--te-text, #FFFEE7);
+        border-color: var(--te-accent, #301C1D);
+        font-weight: 700;
+      }
+      .tag-editor-popup .te-group-label {
+        font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(48,28,29,0.35); margin: 6px 0 3px; width: 100%;
+      }
+      .tag-editor-popup .te-close {
+        display: block; width: 100%; margin-top: 10px;
+        background: #301C1D; border: none; color: #FFFEE7;
+        font-family: 'Space Mono', monospace;
+        font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+        padding: 10px; cursor: pointer;
+      }
       /* Completion mini-prompt */
       .sl-complete-prompt {
         background: #F7B338;
@@ -4417,6 +4474,29 @@
       row.style.opacity = '';
     });
 
+    // Long-press to open tag editor (touch)
+    let _lpTimer = null;
+    let _lpFired = false;
+    row.addEventListener('touchstart', e => {
+      _lpFired = false;
+      _lpTimer = setTimeout(() => {
+        _lpFired = true;
+        e.preventDefault();
+        showTagEditor(item.id);
+      }, 500);
+    }, { passive: false });
+    row.addEventListener('touchend', e => {
+      clearTimeout(_lpTimer);
+      if (_lpFired) e.preventDefault();
+    });
+    row.addEventListener('touchmove', () => { clearTimeout(_lpTimer); });
+    row.addEventListener('touchcancel', () => { clearTimeout(_lpTimer); });
+    // Right-click on desktop
+    row.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      showTagEditor(item.id);
+    });
+
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = !!item.listCompleted;
@@ -4484,6 +4564,148 @@
     row.appendChild(delBtn);
     return row;
   }
+
+  function showTagEditor(itemId) {
+    sortAllItems = loadSortItems();
+    const item = sortAllItems.find(it => it.id == itemId);
+    if (!item) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tag-editor-overlay';
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const popup = document.createElement('div');
+    popup.className = 'tag-editor-popup';
+
+    // Item name
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'te-item-name';
+    nameDiv.textContent = cleanItemText(item.text);
+    popup.appendChild(nameDiv);
+
+    // Helper to build a section
+    function buildSection(label, field, bucketList) {
+      const sec = document.createElement('div');
+      sec.className = 'te-section';
+      const lbl = document.createElement('div');
+      lbl.className = 'te-section-label';
+      lbl.textContent = label;
+      sec.appendChild(lbl);
+      const pills = document.createElement('div');
+      pills.className = 'te-pills';
+      pills.dataset.field = field;
+      bucketList.forEach(b => {
+        const pill = document.createElement('button');
+        pill.className = 'te-pill' + (item[field] === b.key ? ' te-active' : '');
+        pill.textContent = b.label;
+        pill.style.setProperty('--te-accent', b.color || b.accent || '#301C1D');
+        pill.style.setProperty('--te-text', b.textColor || '#FFFEE7');
+        pill.addEventListener('click', () => {
+          // Toggle: if already selected, clear it; otherwise set it
+          const newVal = item[field] === b.key ? undefined : b.key;
+          // Also set meta if this is a subcategory bucket with meta
+          if (field === 'subcategory' && b.meta && newVal) {
+            slUpdateItemField(itemId, 'meta', b.meta);
+            sortAllItems = loadSortItems();
+          }
+          item[field] = newVal;
+          slUpdateItemField(itemId, field, newVal || '');
+          // Clear the field entirely if deselected
+          if (!newVal) {
+            sortAllItems = loadSortItems();
+            const it2 = sortAllItems.find(x => x.id == itemId);
+            if (it2) { delete it2[field]; saveSortItems(sortAllItems); }
+          }
+          // Refresh pill states in this section
+          pills.querySelectorAll('.te-pill').forEach((p, i) => {
+            const bk = bucketList[i];
+            sortAllItems = loadSortItems();
+            const curr = sortAllItems.find(x => x.id == itemId);
+            p.classList.toggle('te-active', curr && curr[field] === bk.key);
+          });
+        });
+        pills.appendChild(pill);
+      });
+      sec.appendChild(pills);
+      return sec;
+    }
+
+    // Timing section
+    popup.appendChild(buildSection('Timing', 'timing', SORT_ROUNDS[5].buckets));
+
+    // Length section
+    popup.appendChild(buildSection('Length', 'length', SORT_ROUNDS[0].buckets));
+
+    // Category section — grouped by meta
+    const catSec = document.createElement('div');
+    catSec.className = 'te-section';
+    const catLbl = document.createElement('div');
+    catLbl.className = 'te-section-label';
+    catLbl.textContent = 'Category';
+    catSec.appendChild(catLbl);
+    const catPills = document.createElement('div');
+    catPills.className = 'te-pills';
+    catPills.style.flexDirection = 'column';
+    catPills.style.gap = '2px';
+
+    const catGroups = [
+      { label: 'FL', round: SORT_ROUNDS[2] },
+      { label: 'Personal', round: SORT_ROUNDS[3] },
+      { label: 'Projects', round: SORT_ROUNDS[4] },
+    ];
+    catGroups.forEach(g => {
+      const groupLabel = document.createElement('div');
+      groupLabel.className = 'te-group-label';
+      groupLabel.textContent = g.label;
+      catPills.appendChild(groupLabel);
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;';
+      g.round.buckets.forEach(b => {
+        const pill = document.createElement('button');
+        pill.className = 'te-pill' + (item.subcategory === b.key ? ' te-active' : '');
+        pill.textContent = b.label;
+        pill.style.setProperty('--te-accent', b.color || '#301C1D');
+        pill.style.setProperty('--te-text', b.textColor || '#FFFEE7');
+        pill.addEventListener('click', () => {
+          const newVal = item.subcategory === b.key ? undefined : b.key;
+          if (newVal && b.meta) {
+            slUpdateItemField(itemId, 'meta', b.meta);
+            sortAllItems = loadSortItems();
+          }
+          item.subcategory = newVal;
+          slUpdateItemField(itemId, 'subcategory', newVal || '');
+          if (!newVal) {
+            sortAllItems = loadSortItems();
+            const it2 = sortAllItems.find(x => x.id == itemId);
+            if (it2) { delete it2.subcategory; saveSortItems(sortAllItems); }
+          }
+          // Refresh all category pills
+          catPills.querySelectorAll('.te-pill').forEach(p => {
+            sortAllItems = loadSortItems();
+            const curr = sortAllItems.find(x => x.id == itemId);
+            const pillKey = p.dataset.bucketKey;
+            p.classList.toggle('te-active', curr && curr.subcategory === pillKey);
+          });
+        });
+        pill.dataset.bucketKey = b.key;
+        row.appendChild(pill);
+      });
+      catPills.appendChild(row);
+    });
+    catSec.appendChild(catPills);
+    popup.appendChild(catSec);
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'te-close';
+    closeBtn.textContent = 'Done';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    popup.appendChild(closeBtn);
+
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+  }
+  window.showTagEditor = showTagEditor;
 
   function slDeleteItem(itemId) {
     sortAllItems = loadSortItems();
