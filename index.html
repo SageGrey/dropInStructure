@@ -1885,6 +1885,8 @@
         onkeydown="if(event.key==='Enter')sanctuaryApplyTimeTravel();if(event.key==='Escape')sanctuaryToggleTimeTravel()"/>
       <button class="sanc-btn primary" onclick="sanctuaryApplyTimeTravel()">Set</button>
     </div>
+    <button id="sanc-bell-btn" class="sanc-btn" onclick="toggleBellMute()">🔔 Bell On</button>
+    <button id="sanc-minimize-btn" class="sanc-btn" onclick="minimizeSanctuary()">Minimize</button>
     <button id="sanctuary-close" class="sanc-btn" onclick="closeSanctuary()">Exit</button>
     <button class="sanc-btn" onclick="openDayReflect()">Reflect</button>
   </div>
@@ -1915,6 +1917,7 @@
   <button onclick="openBillableTab(this)">Billable</button>
   <button onclick="showSection('sorting', this)" style="display:none">Sort</button>
   <button onclick="showSection('sortedlist', this)" id="sorted-list-tab">Sorted List</button>
+  <button onclick="showSection('ideas', this)" id="ideas-tab">Ideas</button>
   <button onclick="showSection('pastlogs', this)" id="past-logs-tab">Past Logs</button>
   <button onclick="showSection('editor', this)" id="editor-tab">✏ Edit</button>
 </nav>
@@ -3002,6 +3005,30 @@
     </div>
   </div>
 
+  <!-- ══ IDEAS ADOPTION CENTER ══ -->
+  <div id="ideas" class="section">
+    <div style="padding:16px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+        <h2 style="font-family:'Archivo Black',sans-serif;font-size:18px;color:#F7B338;letter-spacing:0.08em;text-transform:uppercase;margin:0;">Ideas Adoption Center</h2>
+      </div>
+      <!-- View toggle -->
+      <div style="display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;">
+        <button class="sl-view-btn" onclick="ideasSetView('timing',this)" style="background:#301C1D;border:2px solid rgba(255,254,231,0.15);color:rgba(255,254,231,0.5);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 14px;cursor:pointer;">Timing</button>
+        <button class="sl-view-btn" onclick="ideasSetView('length',this)" style="background:#301C1D;border:2px solid rgba(255,254,231,0.15);color:rgba(255,254,231,0.5);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 14px;cursor:pointer;">Length</button>
+        <button class="sl-view-btn active" onclick="ideasSetView('category',this)" style="background:#301C1D;border:2px solid #F7B338;color:#F7B338;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:7px 14px;cursor:pointer;">Category</button>
+      </div>
+      <!-- Add idea input -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;">
+        <input type="text" id="ideas-add-input" placeholder="Add a new idea..."
+          style="flex:1;background:#FFFEE7;border:2px solid #301C1D;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:9px 12px;outline:none;"
+          onkeydown="if(event.key==='Enter')ideasAddItem()">
+        <button onclick="ideasAddItem()" style="background:#301C1D;border:2px solid #301C1D;color:#F7B338;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 16px;cursor:pointer;">+ Add</button>
+      </div>
+      <!-- Bucket tiles -->
+      <div id="ideas-tiles"></div>
+    </div>
+  </div>
+
   <!-- ══ EDITOR ══ -->
   <div id="editor" class="section">
     <style>
@@ -3073,6 +3100,7 @@
       <button class="ed-tab active" onclick="edShowPane('routines', this)">Routines</button>
       <button class="ed-tab" onclick="edShowPane('logs', this)">Logs</button>
       <button class="ed-tab" onclick="edShowPane('categories', this)">Categories</button>
+      <button class="ed-tab" onclick="edShowPane('ideas-cats', this)">Ideas Categories</button>
     </div>
 
     <!-- ROUTINES PANE -->
@@ -3103,10 +3131,39 @@
         <span id="ed-cat-save-msg" style="font-family:'Space Mono',monospace;font-size:11px;color:#7FA497;letter-spacing:0.1em;opacity:0;transition:opacity 0.4s;"></span>
       </div>
     </div>
+
+    <!-- IDEAS CATEGORIES PANE -->
+    <div id="ed-pane-ideas-cats" class="ed-pane">
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.5);letter-spacing:0.08em;margin-bottom:12px;">
+        These categories are independent from Sorted List. Edit them here to customize the Ideas Adoption Center buckets.
+      </div>
+      <div id="ed-ideas-cats-content"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;">
+        <button class="ed-save-btn" onclick="edSaveIdeasCategories()">Save Ideas Categories</button>
+        <button class="ed-reset-btn" onclick="edResetIdeasCategories()">Reset to Match Sorted List</button>
+        <span id="ed-ideas-cat-save-msg" style="font-family:'Space Mono',monospace;font-size:11px;color:#7FA497;letter-spacing:0.1em;opacity:0;transition:opacity 0.4s;"></span>
+      </div>
+    </div>
   </div>
 
 </main>
 </div><!-- #page-wrap -->
+
+<!-- FLOATING MINI TIMER -->
+<div id="floating-timer" style="display:none;position:fixed;bottom:56px;right:16px;z-index:900;background:#301C1D;border:2px solid rgba(255,254,231,0.25);padding:10px 14px;cursor:pointer;min-width:120px;transition:all 0.3s ease;box-shadow:0 4px 16px rgba(0,0,0,0.3);"
+  onclick="reopenSanctuaryFromFloat()">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div id="float-timer-dot" style="width:8px;height:8px;border-radius:50%;background:#7FA497;flex-shrink:0;animation:float-pulse 2s ease infinite;"></div>
+    <div>
+      <div id="float-timer-label" style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,254,231,0.5);margin-bottom:2px;">Timer</div>
+      <div id="float-timer-display" style="font-family:'Archivo Black',sans-serif;font-size:18px;color:#FFFEE7;letter-spacing:0.04em;">00:00</div>
+    </div>
+    <div id="float-timer-step" style="font-family:'Space Mono',monospace;font-size:10px;color:#F7B338;letter-spacing:0.08em;text-transform:uppercase;margin-left:6px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+  </div>
+</div>
+<style>
+@keyframes float-pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+</style>
 
 <!-- CONFETTI CANVAS -->
 <canvas id="confettiCanvas"></canvas>
@@ -3204,6 +3261,7 @@
     if (id === 'highlights') { try { renderHighlights(); } catch(e) { console.error(e); } }
     if (id === 'notches')    { try { renderAllNotches(); } catch(e) { console.error(e); } }
     if (id === 'theoryweek') setTimeout(() => { if (window.twRenderAll) { try { window.twRenderAll(); } catch(e) { console.error(e); } } }, 50);
+    if (id === 'ideas')  { try { renderIdeas(); } catch(e) { console.error(e); } }
     if (id === 'editor') { try { edRenderRoutines(); } catch(e) { console.error(e); } }
     const arrow = document.getElementById('puzzle-hint-arrow');
     if (arrow) arrow.style.display = id === 'routines' ? '' : 'none';
@@ -4306,7 +4364,6 @@
         { key: 'this-week', label: 'This Week',     accent: '#5b8bd4' },
         { key: 'soon',      label: 'Soon',          accent: '#7FA497' },
         { key: 'whenever',  label: 'Whenever',      accent: '#999' },
-        { key: 'completed', label: 'Completed ✓',   accent: '#7FA497' },
       ],
       subField: 'subcategory',
       subLabel: (item) => item.subcategory || (item.meta ? `(${item.meta})` : null),
@@ -5318,6 +5375,20 @@
   window.renderPastLogs = renderPastLogs;
   window.plCloseModal   = plCloseModal;
 
+  // ── Auto-save daily log entry when tasks are completed ──
+  function ensureDailyLogEntry(dateStr) {
+    // Create or touch a journal_daily_ entry so Past Logs shows this day
+    const key = 'journal_daily_' + (dateStr || todayStr());
+    let daily;
+    try { daily = JSON.parse(localStorage.getItem(key)) || {}; } catch(e) { daily = {}; }
+    // Only create if it doesn't exist yet — don't overwrite existing data
+    if (!localStorage.getItem(key)) {
+      daily = { routines: {}, mistake: '', highlights: '', autoCreated: true };
+    }
+    try { localStorage.setItem(key, JSON.stringify(daily)); } catch(e) {}
+    if (typeof gistMarkDirty === 'function') gistMarkDirty();
+  }
+
   // ── Complete item interaction ──
   let _slPendingItemId = null;
   let _slPendingDate   = null;
@@ -5345,6 +5416,7 @@
       item.listCompleted = true;
       item.completedOn   = item.completedOn || todayStr();
       saveSortItems(sortAllItems);
+      ensureDailyLogEntry(todayStr());
       renderSortedList();
     }
   }
@@ -5415,6 +5487,15 @@
     if (item.meta === 'fl' && mins && _slPendingDate) {
       slAddToBillable(item, mins, _slPendingDate);
     }
+
+    // Auto-save daily log entry so it shows in Past Logs
+    // Normalize the completion date to YYYY-MM-DD for the journal key
+    let logDateStr = _slPendingDate;
+    if (logDateStr) {
+      const parts = logDateStr.split('/');
+      if (parts.length === 3) logDateStr = '20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+    }
+    ensureDailyLogEntry(logDateStr || todayStr());
 
     _slPendingItemId = null;
     document.getElementById('sl-completion-modal').style.display = 'none';
@@ -5897,12 +5978,20 @@
 
   // ── TIBETAN BELL ──
   let audioCtx = null;
+  let bellMuted = false;
   function getAudioCtx() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     return audioCtx;
   }
+  function toggleBellMute() {
+    bellMuted = !bellMuted;
+    const btn = document.getElementById('sanc-bell-btn');
+    if (btn) btn.textContent = bellMuted ? '🔇 Bell Off' : '🔔 Bell On';
+  }
+  window.toggleBellMute = toggleBellMute;
 
   function ringBell(gentle) {
+    if (bellMuted) return;
     ['bellIcon','bellIcon2'].forEach(id => {
       const icon = document.getElementById(id);
       if (!icon) return;
@@ -7811,6 +7900,10 @@
   // Date helpers
   function todayStr() {
     const d = new Date();
+    // Between midnight and 2am, count as previous day
+    if (d.getHours() < 2) {
+      d.setDate(d.getDate() - 1);
+    }
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
   function fmtDateDisplay(str) {
@@ -9172,6 +9265,93 @@
     updateSanctuaryUI();
   }
 
+  let floatingTimerInterval = null;
+  let sanctuaryMinimized = false;
+
+  function minimizeSanctuary() {
+    // Hide sanctuary overlay but keep timer/focus running
+    document.getElementById('sanctuary-overlay').classList.remove('open');
+    const scrollY = parseInt(document.body.dataset.scrollY || '0');
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    window.scrollTo(0, scrollY);
+    document.removeEventListener('keydown', sanctuaryKeyHandler);
+    sanctuaryMinimized = true;
+
+    // Show floating timer
+    const floatEl = document.getElementById('floating-timer');
+    floatEl.style.display = '';
+    // Update floating timer every 500ms
+    if (floatingTimerInterval) clearInterval(floatingTimerInterval);
+    floatingTimerInterval = setInterval(updateFloatingTimer, 500);
+    updateFloatingTimer();
+  }
+  window.minimizeSanctuary = minimizeSanctuary;
+
+  function updateFloatingTimer() {
+    const display = document.getElementById('float-timer-display');
+    const label = document.getElementById('float-timer-label');
+    const stepEl = document.getElementById('float-timer-step');
+    const dot = document.getElementById('float-timer-dot');
+    if (!display) return;
+
+    if (sanctuaryMode === 'routine' && coach) {
+      if (!coach.running) { /* paused but still alive */ }
+      const now = Date.now();
+      const secsLeft = Math.max(0, Math.round((coach.stepDeadline - now) / 1000));
+      const m = Math.floor(secsLeft / 60), s = secsLeft % 60;
+      display.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+      label.textContent = coach.label || 'Routine';
+      const step = coach.steps[coach.stepIndex];
+      stepEl.textContent = step ? step.name : '';
+      dot.style.background = coach.color || '#7FA497';
+    } else if (sanctuaryMode === 'focus' && focusState) {
+      const now = Date.now();
+      const step = focusState.steps[focusState.stepIdx];
+      if (!step) { display.textContent = '✓'; stepEl.textContent = 'done'; return; }
+      const secsLeft = Math.max(0, Math.round((focusState.stepDeadline - now) / 1000));
+      const m = Math.floor(secsLeft / 60), s = secsLeft % 60;
+      display.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+      label.textContent = step.name === 'focus' ? 'Focus' : 'Rest';
+      stepEl.textContent = step.num ? '#' + step.num : '';
+      dot.style.background = step.name === 'focus' ? '#7FA497' : '#7aab6e';
+    } else {
+      // Timer finished or cleared
+      hideFloatingTimer();
+    }
+  }
+
+  function hideFloatingTimer() {
+    const floatEl = document.getElementById('floating-timer');
+    if (floatEl) floatEl.style.display = 'none';
+    if (floatingTimerInterval) { clearInterval(floatingTimerInterval); floatingTimerInterval = null; }
+    sanctuaryMinimized = false;
+  }
+
+  function reopenSanctuaryFromFloat() {
+    hideFloatingTimer();
+    openSanctuary();
+    // Go straight to session (not select screen)
+    if (sanctuaryMode === 'routine' || sanctuaryMode === 'focus') {
+      document.getElementById('sanctuary-select').style.display = 'none';
+      document.getElementById('sanctuary-session').style.display = 'flex';
+      document.getElementById('sanctuary-controls').style.display = 'flex';
+      document.getElementById('sanctuary-controls').style.opacity = '1';
+      if (sanctuaryMode === 'routine') {
+        document.getElementById('sanc-back-btn').style.display = '';
+        sanctuaryInterval = setInterval(updateSanctuaryUI, 500);
+        updateSanctuaryUI();
+      } else if (sanctuaryMode === 'focus') {
+        document.getElementById('sanc-back-btn').style.display = 'none';
+        sanctuaryInterval = setInterval(focusTick, 500);
+        updateSanctuaryUI();
+      }
+    }
+  }
+  window.reopenSanctuaryFromFloat = reopenSanctuaryFromFloat;
+
   function closeSanctuary() {
     document.getElementById('sanctuary-overlay').classList.remove('open');
     // Restore scroll position after body unfreeze
@@ -9192,6 +9372,9 @@
       focusState = null;
     }
     sanctuaryMode = null;
+
+    // Hide floating timer if it was minimized
+    hideFloatingTimer();
 
     // Always restore tile row and hide coach panel
     const modeSelect = document.getElementById('modeSelect');
@@ -9576,6 +9759,8 @@ const SYNC_STATIC_KEYS = [
   'custom_routines_v1',
   'custom_sort_rounds_v1',
   'work_name_v1',
+  'ideas_items_v1',
+  'ideas_categories_v1',
 ];
 const SYNC_KEY_PREFIXES = ['journal_daily_', 'journal_week_', 'journal_list_'];
 
@@ -9830,6 +10015,208 @@ window.syncToggleAuto  = syncToggleAuto;
 })();
 
 // ══════════════════════════════════════════
+// ── IDEAS ADOPTION CENTER ──
+// ══════════════════════════════════════════
+
+const IDEAS_ITEMS_KEY = 'ideas_items_v1';
+const IDEAS_CATS_KEY = 'ideas_categories_v1';
+
+function loadIdeasItems() {
+  try { return JSON.parse(localStorage.getItem(IDEAS_ITEMS_KEY) || '[]'); } catch { return []; }
+}
+function saveIdeasItems(items) {
+  try { localStorage.setItem(IDEAS_ITEMS_KEY, JSON.stringify(items)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+function loadIdeasCategories() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(IDEAS_CATS_KEY));
+    if (saved && saved.length) return saved;
+  } catch {}
+  // Default: clone from SORT_ROUNDS (the main categories)
+  return JSON.parse(JSON.stringify(
+    SORT_ROUNDS.filter(r => r.buckets && r.buckets.length > 0 && r.special !== 'completion').map(r => ({
+      label: r.label,
+      id: r.id,
+      buckets: r.buckets.map(b => ({ key: b.key, label: b.label, color: b.color || '#888888', textColor: b.textColor || '#FFFEE7' }))
+    }))
+  ));
+}
+function saveIdeasCategories(cats) {
+  try { localStorage.setItem(IDEAS_CATS_KEY, JSON.stringify(cats)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+
+let ideasCurrentView = 'category';
+
+// View definitions matching sorted list but using Ideas own categories
+function getIdeasViewDef() {
+  const cats = loadIdeasCategories();
+  const timingCats = cats.find(c => c.id === 'timing' || c.label.toLowerCase().includes('timing'));
+  const lengthCats = cats.find(c => c.id === 'length' || c.label.toLowerCase().includes('length'));
+  const catCats = cats.find(c => c.id === 'category' || c.label.toLowerCase().includes('category') || c.label.toLowerCase().includes('subcategory'));
+
+  const views = {
+    timing: {
+      field: 'timing',
+      buckets: timingCats ? timingCats.buckets.map(b => ({ key: b.key, label: b.label, accent: b.color || '#F7B338' })) :
+        [{ key:'must', label:'Must Today', accent:'#E94D32' },{ key:'ideally', label:'Ideally Today', accent:'#F7B338' },
+         { key:'this-week', label:'This Week', accent:'#5b8bd4' },{ key:'soon', label:'Soon', accent:'#7FA497' },{ key:'whenever', label:'Whenever', accent:'#999' }],
+    },
+    length: {
+      field: 'length',
+      buckets: lengthCats ? lengthCats.buckets.map(b => ({ key: b.key, label: b.label, accent: b.color || '#F7B338' })) :
+        [{ key:'smol', label:'Smol', accent:'#7FA497' },{ key:'push', label:'Push', accent:'#F7B338' },{ key:'whole', label:'Whole Thing', accent:'#E94D32' }],
+    },
+    category: {
+      field: 'subcategory',
+      buckets: null, // dynamic
+    },
+  };
+  return views[ideasCurrentView] || views.category;
+}
+
+function ideasSetView(view, btn) {
+  ideasCurrentView = view;
+  const parent = btn.parentElement;
+  parent.querySelectorAll('.sl-view-btn').forEach(b => {
+    b.style.borderColor = 'rgba(255,254,231,0.15)'; b.style.color = 'rgba(255,254,231,0.5)';
+    b.classList.remove('active');
+  });
+  btn.style.borderColor = '#F7B338'; btn.style.color = '#F7B338';
+  btn.classList.add('active');
+  renderIdeas();
+}
+window.ideasSetView = ideasSetView;
+
+function ideasAddItem() {
+  const inp = document.getElementById('ideas-add-input');
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) { inp.focus(); return; }
+  const items = loadIdeasItems();
+  items.push({
+    id: Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    text,
+    timing: 'whenever',
+    length: null,
+    category: null,
+    subcategory: null,
+    meta: null,
+  });
+  saveIdeasItems(items);
+  inp.value = '';
+  renderIdeas();
+}
+window.ideasAddItem = ideasAddItem;
+
+function ideasDeleteItem(itemId) {
+  let items = loadIdeasItems();
+  items = items.filter(it => it.id !== itemId);
+  saveIdeasItems(items);
+  renderIdeas();
+}
+window.ideasDeleteItem = ideasDeleteItem;
+
+function ideasAdopt(itemId) {
+  // Move idea to main sorted list
+  const ideas = loadIdeasItems();
+  const idx = ideas.findIndex(it => it.id === itemId);
+  if (idx === -1) return;
+  const idea = ideas.splice(idx, 1)[0];
+  saveIdeasItems(ideas);
+  // Add to main sorted list
+  const mainItems = loadSortItems();
+  mainItems.push({
+    id: Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    text: idea.text,
+    timing: idea.timing || null,
+    length: idea.length || null,
+    category: idea.category || null,
+    subcategory: idea.subcategory || null,
+    meta: idea.meta || null,
+    listCompleted: false,
+    completedOn: null,
+    completedMins: null,
+    starred: false,
+    energy: null,
+  });
+  saveSortItems(mainItems);
+  renderIdeas();
+}
+window.ideasAdopt = ideasAdopt;
+
+function renderIdeas() {
+  const container = document.getElementById('ideas-tiles');
+  if (!container) return;
+  const items = loadIdeasItems();
+  const viewDef = getIdeasViewDef();
+  let buckets = viewDef.buckets;
+
+  if (!buckets) {
+    // Dynamic buckets from subcategory values
+    const vals = new Set();
+    items.forEach(it => { if (it[viewDef.field]) vals.add(it[viewDef.field]); });
+    const unsorted = items.filter(it => !it[viewDef.field]);
+    buckets = Array.from(vals).sort().map(v => ({ key: v, label: v.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()), accent: '#F7B338' }));
+    if (unsorted.length > 0) buckets.push({ key: '__unsorted__', label: 'Unsorted', accent: '#999' });
+  }
+
+  let html = '';
+  buckets.forEach(bucket => {
+    const bucketItems = bucket.key === '__unsorted__' ?
+      items.filter(it => !it[viewDef.field]) :
+      items.filter(it => it[viewDef.field] === bucket.key);
+
+    html += `<div style="background:#FFFEE7;border:2px solid #301C1D;margin-bottom:10px;">
+      <div style="background:${bucket.accent || '#F7B338'};padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;text-transform:uppercase;letter-spacing:0.06em;">${bucket.label}</span>
+        <span style="font-family:'Space Mono',monospace;font-size:10px;color:#301C1D;opacity:0.6;">${bucketItems.length}</span>
+      </div>
+      <div style="padding:8px 10px;">`;
+
+    if (bucketItems.length === 0) {
+      html += '<div style="font-family:\'Space Mono\',monospace;font-size:11px;color:rgba(48,28,29,0.3);padding:6px 0;font-style:italic;">No ideas here yet</div>';
+    } else {
+      bucketItems.forEach(item => {
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(48,28,29,0.08);">
+          <span style="flex:1;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;">${item.text.replace(/</g,'&lt;')}</span>
+          <button onclick="ideasAdopt('${item.id}')" title="Adopt to Sorted List" style="background:none;border:1px solid #7FA497;color:#7FA497;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:4px 8px;cursor:pointer;white-space:nowrap;">Adopt</button>
+          <button onclick="ideasDeleteItem('${item.id}')" title="Remove" style="background:none;border:none;color:#E94D32;font-size:16px;cursor:pointer;padding:2px 4px;line-height:1;">×</button>
+        </div>`;
+      });
+    }
+    html += '</div></div>';
+  });
+
+  // Show unsorted items that don't match any bucket
+  if (buckets.every(b => b.key !== '__unsorted__')) {
+    const unsorted = items.filter(it => !buckets.some(b => it[viewDef.field] === b.key));
+    if (unsorted.length > 0) {
+      html += `<div style="background:#FFFEE7;border:2px solid #301C1D;margin-bottom:10px;">
+        <div style="background:#999;padding:10px 14px;">
+          <span style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;text-transform:uppercase;letter-spacing:0.06em;">Unsorted</span>
+        </div><div style="padding:8px 10px;">`;
+      unsorted.forEach(item => {
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(48,28,29,0.08);">
+          <span style="flex:1;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;">${item.text.replace(/</g,'&lt;')}</span>
+          <button onclick="ideasAdopt('${item.id}')" title="Adopt" style="background:none;border:1px solid #7FA497;color:#7FA497;font-family:'Space Mono',monospace;font-size:9px;padding:4px 8px;cursor:pointer;">Adopt</button>
+          <button onclick="ideasDeleteItem('${item.id}')" style="background:none;border:none;color:#E94D32;font-size:16px;cursor:pointer;padding:2px 4px;">×</button>
+        </div>`;
+      });
+      html += '</div></div>';
+    }
+  }
+
+  if (items.length === 0) {
+    html = '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:rgba(255,254,231,0.35);padding:20px 0;">No ideas yet. Add your first idea above!</div>';
+  }
+
+  container.innerHTML = html;
+}
+window.renderIdeas = renderIdeas;
+
+// ══════════════════════════════════════════
 // ── EDITOR TAB ──
 // ══════════════════════════════════════════
 
@@ -9845,6 +10232,7 @@ function edShowPane(name, btn) {
   if (name === 'routines') edRenderRoutines();
   if (name === 'logs') edRenderLogs();
   if (name === 'categories') edRenderCategories();
+  if (name === 'ideas-cats') edRenderIdeasCategories();
 }
 
 // ── Drag-to-reorder state ──
@@ -10282,6 +10670,106 @@ function edResetCategories() {
   edRenderCategories();
   const msg = document.getElementById('ed-cat-save-msg');
   if (msg) { msg.textContent = 'Reset to defaults ✓'; msg.style.opacity = '1'; setTimeout(() => msg.style.opacity = '0', 2500); }
+}
+
+// ── IDEAS CATEGORIES EDITOR ──
+function edRenderIdeasCategories() {
+  const wrap = document.getElementById('ed-ideas-cats-content');
+  if (!wrap) return;
+  const cats = loadIdeasCategories();
+
+  wrap.innerHTML = cats.map((round, ri) => {
+    if (!round.buckets || round.buckets.length === 0) return '';
+    return `
+    <div class="ed-cat-round" id="ed-ideas-cat-round-${ri}">
+      <div class="ed-cat-round-header" onclick="edToggleIdeasCatRound(${ri}, this)">
+        <span>${round.label}</span>
+        <span class="ed-toggle">▾</span>
+      </div>
+      <div class="ed-cat-round-body" id="ed-ideas-cat-body-${ri}">
+        <div style="display:grid;grid-template-columns:1fr 120px 28px;gap:6px;padding:2px 4px 6px;">
+          <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Label</span>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Key</span>
+          <span></span>
+        </div>
+        ${round.buckets.map((bucket, bi) => `
+          <div class="ed-bucket-row" style="grid-template-columns:1fr 120px 28px;">
+            <input type="text" value="${bucket.label.replace(/"/g,'&quot;')}" placeholder="Label" onchange="edUpdateIdeasBucket(${ri},${bi},'label',this.value)">
+            <input type="text" value="${bucket.key}" placeholder="key" style="font-size:11px;color:rgba(48,28,29,0.5);" disabled>
+            <button class="ed-del-btn" onclick="edDeleteIdeasBucket(${ri},${bi})" title="Remove">×</button>
+          </div>`).join('')}
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(48,28,29,0.1);">
+          <input type="text" id="ed-ideas-new-cat-${ri}" placeholder="New category name"
+            style="flex:1;border:1px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:5px 8px;outline:none;"
+            onkeydown="if(event.key==='Enter')edAddIdeasBucket(${ri})">
+          <button class="ed-add-btn" onclick="edAddIdeasBucket(${ri})">+ Add</button>
+        </div>
+      </div>
+    </div>`}).filter(Boolean).join('');
+}
+
+function edToggleIdeasCatRound(ri, headerEl) {
+  const body = document.getElementById('ed-ideas-cat-body-' + ri);
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  headerEl.classList.toggle('collapsed', !collapsed);
+}
+
+function edUpdateIdeasBucket(ri, bi, field, value) {
+  const cats = loadIdeasCategories();
+  if (cats[ri] && cats[ri].buckets[bi]) {
+    cats[ri].buckets[bi][field] = value;
+    saveIdeasCategories(cats);
+  }
+}
+
+function edAddIdeasBucket(ri) {
+  const inp = document.getElementById('ed-ideas-new-cat-' + ri);
+  if (!inp) return;
+  const label = inp.value.trim();
+  if (!label) { inp.focus(); return; }
+  const key = label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const cats = loadIdeasCategories();
+  if (!cats[ri] || !cats[ri].buckets) return;
+  if (cats[ri].buckets.some(b => b.key === key)) {
+    inp.style.borderColor = '#E94D32';
+    setTimeout(() => inp.style.borderColor = '', 1200);
+    return;
+  }
+  cats[ri].buckets.push({ key, label, color: '#888888', textColor: '#FFFEE7' });
+  saveIdeasCategories(cats);
+  inp.value = '';
+  edRenderIdeasCategories();
+  const body = document.getElementById('ed-ideas-cat-body-' + ri);
+  if (body) body.style.display = '';
+}
+
+function edDeleteIdeasBucket(ri, bi) {
+  const cats = loadIdeasCategories();
+  if (!cats[ri] || !cats[ri].buckets) return;
+  const bucket = cats[ri].buckets[bi];
+  if (!confirm(`Remove "${bucket.label}" from Ideas categories?`)) return;
+  cats[ri].buckets.splice(bi, 1);
+  saveIdeasCategories(cats);
+  edRenderIdeasCategories();
+  const body = document.getElementById('ed-ideas-cat-body-' + ri);
+  if (body) body.style.display = '';
+}
+
+function edSaveIdeasCategories() {
+  const cats = loadIdeasCategories();
+  saveIdeasCategories(cats);
+  const msg = document.getElementById('ed-ideas-cat-save-msg');
+  if (msg) { msg.textContent = 'Saved ✓'; msg.style.opacity = '1'; setTimeout(() => msg.style.opacity = '0', 2000); }
+  if (typeof renderIdeas === 'function') renderIdeas();
+}
+
+function edResetIdeasCategories() {
+  if (!confirm('Reset Ideas categories to match current Sorted List categories?')) return;
+  try { localStorage.removeItem(IDEAS_CATS_KEY); } catch(e) {}
+  edRenderIdeasCategories();
+  const msg = document.getElementById('ed-ideas-cat-save-msg');
+  if (msg) { msg.textContent = 'Reset to match Sorted List ✓'; msg.style.opacity = '1'; setTimeout(() => msg.style.opacity = '0', 2500); }
 }
 
 // Init editor when tab is first shown
