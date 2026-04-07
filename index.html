@@ -2431,12 +2431,136 @@
       }
       .sl-view-tile:hover { background: #F7B338; border-color: #F7B338; color: #E94D32; }
       .sl-view-tile.sl-active { background: #F7B338; border-color: #F7B338; color: #E94D32; }
-      .sl-bucket-card {
-        background: #FFFEE7;
-        padding: 0;
+      /* Flip container */
+      .sl-flip-container {
+        perspective: 800px;
         min-width: 260px;
         max-width: 360px;
         flex: 1 1 280px;
+      }
+      .sl-card-inner {
+        position: relative;
+        transform-style: preserve-3d;
+        transition: transform 0.5s ease;
+      }
+      .sl-flip-container.sl-flipped .sl-card-inner {
+        transform: rotateY(180deg);
+      }
+      .sl-card-front, .sl-card-back {
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+      }
+      .sl-card-front {
+        position: relative;
+      }
+      .sl-card-back {
+        position: absolute;
+        inset: 0;
+        transform: rotateY(180deg);
+        background: #FFFEE7;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      /* Dog-ear */
+      .sl-dog-ear {
+        position: absolute;
+        top: 0; right: 0;
+        width: 28px; height: 28px;
+        cursor: pointer;
+        z-index: 2;
+        overflow: hidden;
+      }
+      .sl-dog-ear::before {
+        content: '';
+        position: absolute;
+        top: 0; right: 0;
+        width: 0; height: 0;
+        border-style: solid;
+        border-width: 0 28px 28px 0;
+        border-color: transparent #301C1D transparent transparent;
+        opacity: 0.15;
+        transition: opacity 0.15s;
+      }
+      .sl-dog-ear::after {
+        content: '';
+        position: absolute;
+        top: 0; right: 0;
+        width: 0; height: 0;
+        border-style: solid;
+        border-width: 0 20px 20px 0;
+        border-color: transparent #F7B338 transparent transparent;
+      }
+      .sl-dog-ear:hover::before {
+        opacity: 0.3;
+      }
+      /* Back face dog-ear (to flip back) */
+      .sl-dog-ear-back {
+        position: absolute;
+        top: 0; left: 0;
+        width: 28px; height: 28px;
+        cursor: pointer;
+        z-index: 2;
+      }
+      .sl-dog-ear-back::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0;
+        width: 0; height: 0;
+        border-style: solid;
+        border-width: 28px 0 0 28px;
+        border-color: transparent transparent transparent #301C1D;
+        opacity: 0.15;
+        transition: opacity 0.15s;
+      }
+      .sl-dog-ear-back::after {
+        content: '';
+        position: absolute;
+        top: 0; left: 0;
+        width: 0; height: 0;
+        border-style: solid;
+        border-width: 20px 0 0 20px;
+        border-color: transparent transparent transparent #F7B338;
+      }
+      .sl-dog-ear-back:hover::before {
+        opacity: 0.3;
+      }
+      /* Notes toolbar */
+      .sl-notes-toolbar {
+        display: flex; gap: 4px;
+        padding: 10px 16px 6px 40px;
+        border-bottom: 1px solid rgba(48,28,29,0.1);
+      }
+      .sl-notes-toolbar button {
+        background: none; border: 1.5px solid rgba(48,28,29,0.2);
+        color: #301C1D; font-family: 'Space Mono', monospace;
+        font-size: 11px; padding: 3px 10px; cursor: pointer;
+        transition: all 0.12s;
+      }
+      .sl-notes-toolbar button:hover {
+        background: rgba(48,28,29,0.06); border-color: #301C1D;
+      }
+      .sl-notes-toolbar button.sl-tb-active {
+        background: #F7B338; border-color: #F7B338; font-weight: 700;
+      }
+      /* Notes editor */
+      .sl-notes-editor {
+        flex: 1; padding: 10px 16px; min-height: 120px;
+        font-family: 'Space Mono', monospace; font-size: 12px;
+        color: #301C1D; line-height: 1.6;
+        outline: none; overflow-y: auto;
+      }
+      .sl-notes-editor:empty::before {
+        content: 'Notes…';
+        color: rgba(48,28,29,0.25);
+        pointer-events: none;
+      }
+      .sl-notes-editor ul { margin: 0; padding-left: 20px; }
+      .sl-notes-editor b, .sl-notes-editor strong { font-weight: 700; }
+      .sl-bucket-card {
+        background: #FFFEE7;
+        padding: 0;
+        width: 100%;
         display: flex;
         flex-direction: column;
       }
@@ -2505,16 +2629,32 @@
       /* Tag editor popup */
       .tag-editor-overlay {
         position: fixed; inset: 0; z-index: 9999;
+        background: rgba(48,28,29,0);
+        display: flex; align-items: flex-end; justify-content: center;
+        padding: 0;
+        transition: background 0.18s ease-out;
+      }
+      .tag-editor-overlay.te-visible {
         background: rgba(48,28,29,0.55);
-        display: flex; align-items: center; justify-content: center;
-        padding: 16px;
       }
       .tag-editor-popup {
         background: #FFFEE7; color: #301C1D;
-        border: 2px solid #301C1D;
+        border: 2px solid #301C1D; border-bottom: none;
         width: 100%; max-width: 380px; max-height: 85vh;
         overflow-y: auto; padding: 18px 16px 14px;
         font-family: 'Space Mono', monospace;
+        transform: translateY(100%);
+        opacity: 0;
+        transition: transform 0.2s ease-out, opacity 0.15s ease-out;
+      }
+      .tag-editor-overlay.te-visible .tag-editor-popup {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      /* Long-press visual feedback */
+      .sl-item-row.te-pressing {
+        background: rgba(48,28,29,0.06);
+        transition: background 0.15s ease;
       }
       .tag-editor-popup h3 {
         font-family: 'Space Mono', monospace;
@@ -2543,9 +2683,9 @@
       }
       .tag-editor-popup .te-pill:hover { border-color: #301C1D; }
       .tag-editor-popup .te-pill.te-active {
-        background: var(--te-accent, #301C1D);
-        color: var(--te-text, #FFFEE7);
-        border-color: var(--te-accent, #301C1D);
+        background: #F7B338;
+        color: #301C1D;
+        border-color: #F7B338;
         font-weight: 700;
       }
       .tag-editor-popup .te-group-label {
@@ -2570,7 +2710,7 @@
         align-items: center;
       }
       @media (max-width: 700px) {
-        .sl-bucket-card { min-width: 100%; max-width: 100%; }
+        .sl-flip-container { min-width: 100%; max-width: 100%; }
         .sl-view-tile { padding: 10px 14px; font-size: 11px; }
       }
     </style>
@@ -2586,6 +2726,7 @@
       <button class="sl-filter-btn sl-filter-active" id="sl-filter-all"    onclick="slSetFilter('all')"   style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">All</button>
       <button class="sl-filter-btn"                  id="sl-filter-fl"     onclick="slSetFilter('fl')"    style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">FL only</button>
       <button class="sl-filter-btn"                  id="sl-filter-non-fl" onclick="slSetFilter('non-fl')" style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">Non-FL</button>
+      <button class="sl-filter-btn"                  id="sl-filter-starred" onclick="slSetFilter('starred')" style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">&#9733; Starred</button>
 
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
         <button onclick="slStartSort()" style="background:#E94D32;border:none;color:#FFFEE7;font-family:'Archivo Black',sans-serif;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;padding:8px 18px;cursor:pointer;">Sort →</button>
@@ -4192,9 +4333,10 @@
     let allItems = loadSortItems();
     sortAllItems = allItems; // keep in sync
 
-    // Apply FL filter
-    if (slFilter === 'fl')     allItems = allItems.filter(it => it.meta === 'fl');
-    if (slFilter === 'non-fl') allItems = allItems.filter(it => it.meta !== 'fl');
+    // Apply filters
+    if (slFilter === 'fl')      allItems = allItems.filter(it => it.meta === 'fl');
+    if (slFilter === 'non-fl')  allItems = allItems.filter(it => it.meta !== 'fl');
+    if (slFilter === 'starred') allItems = allItems.filter(it => it.starred);
 
     const view = SL_VIEWS[slView];
     if (!view) return;
@@ -4275,6 +4417,16 @@
     item[field] = value;
     saveSortItems(sortAllItems);
     renderSortedList();
+  }
+
+  // ── Bucket notes storage ──
+  function bucketNotesKey(viewField, bucketKey) { return 'slBucketNotes_' + viewField + '_' + bucketKey; }
+  function loadBucketNotes(viewField, bucketKey) {
+    try { return localStorage.getItem(bucketNotesKey(viewField, bucketKey)) || ''; } catch { return ''; }
+  }
+  function saveBucketNotes(viewField, bucketKey, html) {
+    try { localStorage.setItem(bucketNotesKey(viewField, bucketKey), html); } catch {}
+    if (typeof gistMarkDirty === 'function') gistMarkDirty();
   }
 
   function buildBucketCard(bucket, items, view) {
@@ -4439,7 +4591,79 @@
     addRow.appendChild(inputRow);
     card.appendChild(addRow);
 
-    return card;
+    // ── Flip container: front (card) + back (notes) ──
+    const flipContainer = document.createElement('div');
+    flipContainer.className = 'sl-flip-container';
+    const cardInner = document.createElement('div');
+    cardInner.className = 'sl-card-inner';
+
+    // Front face wraps the existing card
+    card.classList.add('sl-card-front');
+
+    // Dog-ear on front (top-right)
+    const dogEar = document.createElement('div');
+    dogEar.className = 'sl-dog-ear';
+    dogEar.title = 'Flip for notes';
+    dogEar.addEventListener('click', e => {
+      e.stopPropagation();
+      flipContainer.classList.add('sl-flipped');
+    });
+    card.appendChild(dogEar);
+
+    // Back face
+    const back = document.createElement('div');
+    back.className = 'sl-card-back';
+
+    // Dog-ear on back (top-left, mirrored)
+    const dogEarBack = document.createElement('div');
+    dogEarBack.className = 'sl-dog-ear-back';
+    dogEarBack.title = 'Flip back';
+    dogEarBack.addEventListener('click', e => {
+      e.stopPropagation();
+      flipContainer.classList.remove('sl-flipped');
+    });
+    back.appendChild(dogEarBack);
+
+    // Back header
+    const backHdr = document.createElement('div');
+    backHdr.style.cssText = "font-family:'Archivo Black',sans-serif;font-size:12px;color:rgba(48,28,29,0.35);text-transform:uppercase;letter-spacing:0.08em;padding:10px 16px 0 40px;";
+    backHdr.textContent = bucket.label + ' — Notes';
+    back.appendChild(backHdr);
+
+    // Toolbar
+    const toolbar = document.createElement('div');
+    toolbar.className = 'sl-notes-toolbar';
+    const boldBtn = document.createElement('button');
+    boldBtn.innerHTML = '<b>B</b>';
+    boldBtn.title = 'Bold';
+    boldBtn.addEventListener('mousedown', e => e.preventDefault());
+    boldBtn.addEventListener('click', () => { document.execCommand('bold'); editor.focus(); });
+    const listBtn = document.createElement('button');
+    listBtn.textContent = '• List';
+    listBtn.title = 'Bullet list';
+    listBtn.addEventListener('mousedown', e => e.preventDefault());
+    listBtn.addEventListener('click', () => { document.execCommand('insertUnorderedList'); editor.focus(); });
+    toolbar.appendChild(boldBtn);
+    toolbar.appendChild(listBtn);
+    back.appendChild(toolbar);
+
+    // Editor
+    const editor = document.createElement('div');
+    editor.className = 'sl-notes-editor';
+    editor.contentEditable = 'true';
+    editor.innerHTML = loadBucketNotes(view.field, bucket.key);
+    let _saveTimer = null;
+    editor.addEventListener('input', () => {
+      clearTimeout(_saveTimer);
+      _saveTimer = setTimeout(() => saveBucketNotes(view.field, bucket.key, editor.innerHTML), 300);
+    });
+    back.appendChild(editor);
+
+    cardInner.appendChild(card);
+    cardInner.appendChild(back);
+    flipContainer.appendChild(cardInner);
+
+    return flipContainer;
   }
 
   function cleanItemText(text) {
@@ -4479,23 +4703,21 @@
     let _lpFired = false;
     row.addEventListener('touchstart', e => {
       _lpFired = false;
+      row.classList.add('te-pressing');
       _lpTimer = setTimeout(() => {
         _lpFired = true;
         e.preventDefault();
+        row.classList.remove('te-pressing');
         showTagEditor(item.id);
       }, 500);
     }, { passive: false });
     row.addEventListener('touchend', e => {
       clearTimeout(_lpTimer);
+      row.classList.remove('te-pressing');
       if (_lpFired) e.preventDefault();
     });
-    row.addEventListener('touchmove', () => { clearTimeout(_lpTimer); });
-    row.addEventListener('touchcancel', () => { clearTimeout(_lpTimer); });
-    // Right-click on desktop
-    row.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      showTagEditor(item.id);
-    });
+    row.addEventListener('touchmove', () => { clearTimeout(_lpTimer); row.classList.remove('te-pressing'); });
+    row.addEventListener('touchcancel', () => { clearTimeout(_lpTimer); row.classList.remove('te-pressing'); });
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -4550,6 +4772,34 @@
       txtWrap.appendChild(meta);
     }
 
+    // Star button
+    const starBtn = document.createElement('button');
+    starBtn.textContent = item.starred ? '★' : '☆';
+    starBtn.title = item.starred ? 'Unstar' : 'Star';
+    starBtn.style.cssText = 'background:none;border:none;font-size:14px;cursor:pointer;padding:0 3px;flex-shrink:0;line-height:1;color:' + (item.starred ? '#F7B338' : 'rgba(48,28,29,0.2)') + ';';
+    starBtn.onmouseover = () => { if (!item.starred) starBtn.style.color = '#F7B338'; };
+    starBtn.onmouseout  = () => { if (!item.starred) starBtn.style.color = 'rgba(48,28,29,0.2)'; };
+    starBtn.addEventListener('mousedown', e => e.stopPropagation());
+    starBtn.onclick = (e) => {
+      e.stopPropagation();
+      sortAllItems = loadSortItems();
+      const it = sortAllItems.find(x => x.id == item.id);
+      if (it) { it.starred = !it.starred; saveSortItems(sortAllItems); }
+      renderSortedList();
+    };
+
+    // Bold text if starred
+    if (item.starred) txt.style.fontWeight = '700';
+
+    const tagBtn = document.createElement('button');
+    tagBtn.textContent = '⋯';
+    tagBtn.title = 'Edit tags';
+    tagBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.3);font-size:16px;cursor:pointer;padding:0 4px;flex-shrink:0;line-height:1;font-weight:700;';
+    tagBtn.onmouseover = () => tagBtn.style.color = '#301C1D';
+    tagBtn.onmouseout  = () => tagBtn.style.color = 'rgba(48,28,29,0.3)';
+    tagBtn.addEventListener('mousedown', e => e.stopPropagation());
+    tagBtn.onclick = (e) => { e.stopPropagation(); showTagEditor(item.id); };
+
     const delBtn = document.createElement('button');
     delBtn.textContent = '✕';
     delBtn.title = 'Delete item';
@@ -4561,6 +4811,8 @@
 
     row.appendChild(cb);
     row.appendChild(txtWrap);
+    row.appendChild(starBtn);
+    row.appendChild(tagBtn);
     row.appendChild(delBtn);
     return row;
   }
@@ -4570,9 +4822,16 @@
     const item = sortAllItems.find(it => it.id == itemId);
     if (!item) return;
 
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(10);
+
     const overlay = document.createElement('div');
     overlay.className = 'tag-editor-overlay';
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    const dismissOverlay = () => {
+      overlay.classList.remove('te-visible');
+      setTimeout(() => overlay.remove(), 200);
+    };
+    overlay.addEventListener('click', e => { if (e.target === overlay) dismissOverlay(); });
 
     const popup = document.createElement('div');
     popup.className = 'tag-editor-popup';
@@ -4598,8 +4857,6 @@
         const pill = document.createElement('button');
         pill.className = 'te-pill' + (item[field] === b.key ? ' te-active' : '');
         pill.textContent = b.label;
-        pill.style.setProperty('--te-accent', b.color || b.accent || '#301C1D');
-        pill.style.setProperty('--te-text', b.textColor || '#FFFEE7');
         pill.addEventListener('click', () => {
           // Toggle: if already selected, clear it; otherwise set it
           const newVal = item[field] === b.key ? undefined : b.key;
@@ -4664,8 +4921,6 @@
         const pill = document.createElement('button');
         pill.className = 'te-pill' + (item.subcategory === b.key ? ' te-active' : '');
         pill.textContent = b.label;
-        pill.style.setProperty('--te-accent', b.color || '#301C1D');
-        pill.style.setProperty('--te-text', b.textColor || '#FFFEE7');
         pill.addEventListener('click', () => {
           const newVal = item.subcategory === b.key ? undefined : b.key;
           if (newVal && b.meta) {
@@ -4699,11 +4954,13 @@
     const closeBtn = document.createElement('button');
     closeBtn.className = 'te-close';
     closeBtn.textContent = 'Done';
-    closeBtn.addEventListener('click', () => overlay.remove());
+    closeBtn.addEventListener('click', () => dismissOverlay());
     popup.appendChild(closeBtn);
 
     overlay.appendChild(popup);
     document.body.appendChild(overlay);
+    // Trigger enter animation on next frame
+    requestAnimationFrame(() => { requestAnimationFrame(() => { overlay.classList.add('te-visible'); }); });
   }
   window.showTagEditor = showTagEditor;
 
