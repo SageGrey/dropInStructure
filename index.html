@@ -3449,6 +3449,9 @@
   let _timerSecsLeft = 0;
   let _roundSortedCount = 0;
   let _roundTotalCount = 0;
+  let _totalSortedAcrossRounds = 0;
+  let _totalUnsortedFields = 0;
+  let _sortBucketFilter = null; // { field, value } — scopes sorting to a bucket's items
 
   function startRoundTimer() {
     clearInterval(_timerInterval);
@@ -3468,7 +3471,7 @@
         // Time's up — advance to done phase for this round
         const hasMoreRounds = sortCurrentRound < SORT_ROUNDS.length - 1;
         showDonePhase(
-          `Time! You sorted ${_roundSortedCount} of ${_roundTotalCount} items.`,
+          `Time! You sorted ${_roundSortedCount} of ${_roundTotalCount} items this round.`,
           hasMoreRounds
         );
       }
@@ -3484,19 +3487,23 @@
 
   function beginRound(roundIdx) {
     if (roundIdx >= SORT_ROUNDS.length) {
-      showDonePhase('All rounds complete!', false);
+      showDonePhase(`All rounds complete! Sorted ${_totalSortedAcrossRounds} of ${_totalUnsortedFields} fields.`, false);
       return;
     }
     const round = SORT_ROUNDS[roundIdx];
     sortCurrentRound = roundIdx;
     sortQueue = round.queue(sortAllItems);
+    // Apply bucket filter if scoped sorting is active
+    if (_sortBucketFilter) {
+      sortQueue = sortQueue.filter(it => it[_sortBucketFilter.field] === _sortBucketFilter.value);
+    }
     sortHistory = [];
     if (sortQueue.length === 0) {
       // This round is empty — try next round
       if (roundIdx + 1 < SORT_ROUNDS.length) {
         beginRound(roundIdx + 1);
       } else {
-        showDonePhase('All sorted.', false);
+        showDonePhase(`All sorted! ${_totalSortedAcrossRounds} of ${_totalUnsortedFields} fields sorted.`, false);
       }
       return;
     }
@@ -3690,7 +3697,7 @@
           setTimeout(() => {
             tile.classList.remove('sort-swallowing');
             tile.style.display = 'none';
-            playBloop();
+            // playBloop(); // sound removed
             updateBucketCounter(n);
             if (n.isDelete) deleteCurrentSortItem();
             else if (n.meta !== undefined) (sortItemCat._raw || sortItemCat)(n.key, n.meta);
@@ -3834,7 +3841,7 @@
           setTimeout(() => {
             tile.classList.remove('sort-swallowing');
             tile.style.display = 'none';
-            playBloop();
+            // playBloop(); // sound removed
             // Update counter
             updateBucketCounter(bucket);
             if (bucket.isDelete) deleteCurrentSortItem();
@@ -4042,6 +4049,20 @@
   // Show gameboard when entering card phase
   const _origBeginRound = beginRound;
   beginRound = function(roundIdx) {
+    // Initialize cross-round stats on first round
+    if (roundIdx === 0) {
+      _totalSortedAcrossRounds = 0;
+      // Count total unsorted fields: for each item, count null sortable fields
+      const items = loadSortItems();
+      let total = 0;
+      items.forEach(it => {
+        if (!it.length) total++;
+        if (!it.meta && !it.subcategory) total++;
+        else if (it.meta && !it.subcategory) total++;
+        if (!it.timing && (it.meta || it.subcategory)) total++;
+      });
+      _totalUnsortedFields = total;
+    }
     // Hide completion UI if visible
     const cui = document.getElementById('sort-completion-ui');
     if (cui) cui.style.display = 'none';
@@ -4064,7 +4085,7 @@
     stopRoundTimer();
     const hasMoreRounds = sortCurrentRound < SORT_ROUNDS.length - 1;
     showDonePhase(
-      hasMoreRounds ? `Round ${sortCurrentRound + 1} skipped.` : 'All sorted.',
+      hasMoreRounds ? `Round ${sortCurrentRound + 1} skipped.` : `All sorted! ${_totalSortedAcrossRounds} of ${_totalUnsortedFields} fields sorted.`,
       hasMoreRounds
     );
   }
@@ -4079,7 +4100,7 @@
       }
       const hasMoreRounds = nextRound < SORT_ROUNDS.length;
       showDonePhase(
-        hasMoreRounds ? `Round ${sortCurrentRound + 1} complete.` : 'All sorted.',
+        hasMoreRounds ? `Round ${sortCurrentRound + 1} complete. (${_totalSortedAcrossRounds} sorted so far)` : `All sorted! ${_totalSortedAcrossRounds} of ${_totalUnsortedFields} fields sorted.`,
         hasMoreRounds
       );
       return;
@@ -4179,6 +4200,8 @@
     item[field] = value;
     if (extraField) item[extraField] = extraValue;
     saveSortItems(sortAllItems);
+    _roundSortedCount++;
+    _totalSortedAcrossRounds++;
     sortQueueIdx++;
     showSortCard();
   }
@@ -4193,6 +4216,7 @@
   }
 
   function exitSortBoard() {
+    _sortBucketFilter = null; // clear scoped filter
     const phase = document.getElementById('sort-card-phase');
     if (phase) phase.style.display = 'none';
     document.getElementById('sort-input-phase').style.display = '';
@@ -4254,6 +4278,7 @@
 
   function showDonePhase(msg, hasNext) {
     stopRoundTimer();
+    if (!hasNext) _sortBucketFilter = null; // clear scoped filter when done
     const phase = document.getElementById('sort-done-phase');
     phase.style.display = 'flex';
     document.getElementById('sort-card-phase').style.display = 'none';
@@ -4594,6 +4619,18 @@
     const hdr = document.createElement('div');
     hdr.className = 'sl-bucket-header';
     hdr.innerHTML = `<span class="sl-hdr-text">${bucket.label.toUpperCase()}</span>`;
+    // "Sort this section" button
+    if (bucket.key !== '__unsorted') {
+      const sortBtn = document.createElement('button');
+      sortBtn.textContent = '⟳ Sort';
+      sortBtn.title = 'Sort items in this section';
+      sortBtn.style.cssText = "background:none;border:1px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;cursor:pointer;opacity:0.5;transition:opacity 0.15s;margin-left:auto;";
+      sortBtn.onmouseover = () => sortBtn.style.opacity = '1';
+      sortBtn.onmouseout  = () => sortBtn.style.opacity = '0.5';
+      sortBtn.onclick = (e) => { e.stopPropagation(); sortBucketItems(bucket.key, view.field); };
+      hdr.style.display = 'flex'; hdr.style.alignItems = 'center'; hdr.style.gap = '8px';
+      hdr.appendChild(sortBtn);
+    }
     card.appendChild(hdr);
 
     // Group by subField (respects user override)
@@ -4995,9 +5032,20 @@
     delBtn.addEventListener('mousedown', e => e.stopPropagation());
     delBtn.onclick = (e) => { e.stopPropagation(); slDeleteItem(item.id); };
 
+    // Move to Ideas button
+    const ideaBtn = document.createElement('button');
+    ideaBtn.textContent = '→';
+    ideaBtn.title = 'Move to Ideas';
+    ideaBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.2);font-size:14px;cursor:pointer;padding:0 3px;flex-shrink:0;line-height:1;font-weight:700;';
+    ideaBtn.onmouseover = () => ideaBtn.style.color = '#5b8bd4';
+    ideaBtn.onmouseout  = () => ideaBtn.style.color = 'rgba(48,28,29,0.2)';
+    ideaBtn.addEventListener('mousedown', e => e.stopPropagation());
+    ideaBtn.onclick = (e) => { e.stopPropagation(); slMoveToIdeas(item.id); };
+
     row.appendChild(cb);
     row.appendChild(txtWrap);
     row.appendChild(starBtn);
+    row.appendChild(ideaBtn);
     row.appendChild(tagBtn);
     row.appendChild(delBtn);
     return row;
@@ -5158,6 +5206,27 @@
   }
   window.slDeleteItem = slDeleteItem;
 
+  function slMoveToIdeas(itemId) {
+    sortAllItems = loadSortItems();
+    const idx = sortAllItems.findIndex(it => it.id == itemId);
+    if (idx === -1) return;
+    const item = sortAllItems.splice(idx, 1)[0];
+    saveSortItems(sortAllItems);
+    const ideas = loadIdeasItems();
+    ideas.push({
+      id: Date.now() + '_' + Math.random().toString(36).slice(2,6),
+      text: item.text,
+      timing: item.timing || null,
+      length: item.length || null,
+      category: item.category || null,
+      subcategory: item.subcategory || null,
+      meta: item.meta || null,
+    });
+    saveIdeasItems(ideas);
+    renderSortedList();
+  }
+  window.slMoveToIdeas = slMoveToIdeas;
+
   let _clearConfirmPending = false;
   let _clearConfirmTimer = null;
   function slClearCompleted() {
@@ -5198,6 +5267,26 @@
     beginRound(0);
   }
   window.slStartSort = slStartSort;
+
+  function sortBucketItems(bucketKey, viewField) {
+    sortAllItems = loadSortItems();
+    _sortBucketFilter = { field: viewField, value: bucketKey };
+    // Find first round with unsorted items in this bucket
+    const hasAnything = SORT_ROUNDS.some(r => {
+      if (r.special === 'completion') return false;
+      const q = r.queue(sortAllItems).filter(it => it[viewField] === bucketKey);
+      return q.length > 0;
+    });
+    if (!hasAnything) {
+      _sortBucketFilter = null;
+      return; // nothing to sort
+    }
+    // Switch to sort tab view
+    const sortNavBtn = document.querySelector('nav button[onclick*="sorting"]');
+    showSection('sorting', sortNavBtn);
+    beginRound(0);
+  }
+  window.sortBucketItems = sortBucketItems;
 
   // ══ PAST LOGS ══
   function plGetAllDailyKeys() {
@@ -5342,6 +5431,36 @@
       });
       body.appendChild(list);
     }
+
+    // Journal lists (ideas, movies, compliments, fantasizing) — show items from this day as tiles
+    const jListDefs = [
+      { key: 'ideas',       label: 'Ideas',       accent: '#F7B338' },
+      { key: 'movies',      label: 'Movies',      accent: '#5b8bd4' },
+      { key: 'compliments', label: 'Compliments', accent: '#7FA497' },
+      { key: 'fantasizing', label: 'Schemes',     accent: '#E94D32' },
+    ];
+    jListDefs.forEach(def => {
+      let allItems = [];
+      try { allItems = JSON.parse(localStorage.getItem('journal_list_' + def.key) || '[]'); } catch(e) {}
+      const dayItems = allItems.filter(it => (it.date || '') === dateStr);
+      if (dayItems.length === 0) return;
+      const tile = document.createElement('div');
+      tile.style.cssText = 'background:#FFFEE7;border:2px solid #301C1D;margin-bottom:10px;';
+      const tileHdr = document.createElement('div');
+      tileHdr.style.cssText = `background:${def.accent};padding:8px 14px;`;
+      tileHdr.innerHTML = `<span style="font-family:'Archivo Black',sans-serif;font-size:12px;color:#301C1D;text-transform:uppercase;letter-spacing:0.06em;">${def.label}</span>`;
+      tile.appendChild(tileHdr);
+      const tileBody = document.createElement('div');
+      tileBody.style.cssText = 'padding:8px 12px;';
+      dayItems.forEach(it => {
+        const row = document.createElement('div');
+        row.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;padding:4px 0;border-bottom:1px solid rgba(48,28,29,0.08);";
+        row.textContent = typeof it === 'string' ? it : (it.text || '');
+        tileBody.appendChild(row);
+      });
+      tile.appendChild(tileBody);
+      body.appendChild(tile);
+    });
 
     // Weekly recap (if the key happens to be Monday)
     const d = new Date(...dateStr.split('-').map((v,i) => i===1 ? Number(v)-1 : Number(v)));
@@ -8835,13 +8954,18 @@
       else        { badge.style.display = 'none'; }
     }
 
-    function renderJList(key, elId) {
+    function renderJList(key, elId, dateFilter) {
       const items = jLoad('journal_list_' + key, []);
       const el = document.getElementById(elId);
       if (!el) return;
       el.innerHTML = '';
       items.slice().reverse().forEach((item, ri) => {
         const idx = items.length - 1 - ri;
+        // If dateFilter is set, only show items from that date
+        if (dateFilter) {
+          const itemDate = typeof item === 'string' ? null : (item.date || null);
+          if (itemDate !== dateFilter) return;
+        }
         const row = document.createElement('div');
         row.className = 'j-list-item';
         row.innerHTML = '<span>' + (item.text||item).replace(/</g,'&lt;') + '</span><button onclick="jDeleteListItem(\'' + key + '\',' + idx + ')">✕</button>';
@@ -8853,7 +8977,7 @@
       const items = jLoad('journal_list_' + key, []);
       items.splice(idx, 1);
       jSave('journal_list_' + key, items);
-      renderJList(key, 'j-' + key + '-list');
+      renderJList(key, 'j-' + key + '-list', todayStr());
     };
 
     function addJListItem(key, inputId) {
@@ -8863,7 +8987,7 @@
       items.push({ text: inp.value.trim(), date: todayStr() });
       jSave('journal_list_' + key, items);
       inp.value = '';
-      renderJList(key, 'j-' + key + '-list');
+      renderJList(key, 'j-' + key + '-list', todayStr());
     }
 
     function openJournalModal() {
@@ -8897,8 +9021,9 @@
       document.getElementById('j-highlights').value = daily.highlights || '';
       document.getElementById('j-recap').value      = weekly.recap     || '';
 
-      // Render persistent lists
-      ['movies','compliments','fantasizing','ideas'].forEach(k => renderJList(k, 'j-' + k + '-list'));
+      // Render persistent lists — only show items from today
+      const _jToday = todayStr();
+      ['movies','compliments','fantasizing','ideas'].forEach(k => renderJList(k, 'j-' + k + '-list', _jToday));
 
       // Wire up Enter key for list inputs
       ['movies','compliments','fantasizing','ideas'].forEach(k => {
@@ -10284,6 +10409,7 @@ function edItemRowHTML(routineKey, idx, item) {
 
 function edAttachDrag() {
   document.querySelectorAll('.ed-item-row[draggable]').forEach(row => {
+    // Desktop drag events
     row.addEventListener('dragstart', e => {
       edDragSrc = row;
       e.dataTransfer.effectAllowed = 'move';
@@ -10304,9 +10430,87 @@ function edAttachDrag() {
       const [moved] = items.splice(srcIdx, 1);
       items.splice(dstIdx, 0, moved);
       saveRoutines(r);
-      // Re-read the live routines object
       Object.assign(routines[srcKey], { items: r[srcKey].items });
       edRenderRoutines();
+    });
+
+    // Mobile touch drag events
+    let _edTouchRow = null;
+    let _edTouchStartY = 0;
+    let _edTouchGhost = null;
+
+    row.addEventListener('touchstart', e => {
+      const handle = row.querySelector('.ed-drag-handle');
+      // Only start drag from the handle area
+      const touch = e.touches[0];
+      if (handle) {
+        const rect = handle.getBoundingClientRect();
+        if (touch.clientX < rect.left - 10 || touch.clientX > rect.right + 10 ||
+            touch.clientY < rect.top - 10 || touch.clientY > rect.bottom + 10) return;
+      }
+      _edTouchRow = row;
+      _edTouchStartY = touch.clientY;
+      edDragSrc = row;
+      // Create ghost
+      _edTouchGhost = row.cloneNode(true);
+      _edTouchGhost.style.cssText = 'position:fixed;left:0;right:0;z-index:9999;opacity:0.85;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:#FFFEE7;' +
+        'top:' + row.getBoundingClientRect().top + 'px;width:' + row.offsetWidth + 'px;';
+      document.body.appendChild(_edTouchGhost);
+      row.style.opacity = '0.3';
+    }, { passive: true });
+
+    const onTouchMove = e => {
+      if (!_edTouchRow || !_edTouchGhost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dy = touch.clientY - _edTouchStartY;
+      _edTouchGhost.style.top = (_edTouchRow.getBoundingClientRect().top + dy) + 'px';
+      // Highlight drop target
+      document.querySelectorAll('.ed-item-row').forEach(r => r.style.borderTop = '');
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-item-row[draggable]') : null;
+      if (targetRow && targetRow !== _edTouchRow && targetRow.dataset.routine === _edTouchRow.dataset.routine) {
+        targetRow.style.borderTop = '3px solid #F7B338';
+      }
+    };
+
+    const onTouchEnd = e => {
+      if (!_edTouchRow) return;
+      // Find drop target
+      const touch = e.changedTouches[0];
+      document.querySelectorAll('.ed-item-row').forEach(r => r.style.borderTop = '');
+      if (_edTouchGhost) { _edTouchGhost.remove(); _edTouchGhost = null; }
+      _edTouchRow.style.opacity = '';
+
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-item-row[draggable]') : null;
+      if (targetRow && targetRow !== _edTouchRow) {
+        const srcKey = _edTouchRow.dataset.routine;
+        const dstKey = targetRow.dataset.routine;
+        if (srcKey === dstKey) {
+          const srcIdx = parseInt(_edTouchRow.dataset.idx);
+          const dstIdx = parseInt(targetRow.dataset.idx);
+          const r = loadRoutines();
+          const items = r[srcKey].items;
+          const [moved] = items.splice(srcIdx, 1);
+          items.splice(dstIdx, 0, moved);
+          saveRoutines(r);
+          Object.assign(routines[srcKey], { items: r[srcKey].items });
+          edRenderRoutines();
+        }
+      }
+      _edTouchRow = null;
+      edDragSrc = null;
+    };
+
+    row.addEventListener('touchmove', onTouchMove, { passive: false });
+    row.addEventListener('touchend', onTouchEnd);
+    row.addEventListener('touchcancel', () => {
+      if (_edTouchGhost) { _edTouchGhost.remove(); _edTouchGhost = null; }
+      if (_edTouchRow) _edTouchRow.style.opacity = '';
+      _edTouchRow = null;
+      edDragSrc = null;
+      document.querySelectorAll('.ed-item-row').forEach(r => r.style.borderTop = '');
     });
   });
 }
