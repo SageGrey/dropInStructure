@@ -2437,13 +2437,14 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
+        width: 340px;
+        flex-shrink: 0;
+      }
+      .today-right {
         flex: 1;
         min-width: 0;
       }
-      .today-right {
-        width: 420px;
-        flex-shrink: 0;
-      }
+      /* Completed / Daily FL tiles reuse sl-bucket-card styling */
       .today-tile {
         background: #FFFEE7;
         padding: 0;
@@ -2451,26 +2452,7 @@
         display: flex;
         flex-direction: column;
       }
-      .today-tile-header {
-        font-family: 'Archivo Black', sans-serif;
-        font-size: 15px;
-        color: #301C1D;
-        background: #FFFEE7;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        padding: 14px 16px 12px;
-        border-bottom: 2px solid rgba(48,28,29,0.12);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .today-tile-header .today-hdr-text {
-        padding: 2px 8px 3px;
-        display: inline-block;
-      }
-      .today-tile-body {
-        padding: 0;
-      }
+      .today-tile .sl-bucket-header { /* inherit sorted list header */ }
       .today-item-row {
         display: flex;
         align-items: flex-start;
@@ -2511,6 +2493,35 @@
       }
       .today-add-input::placeholder { color: rgba(48,28,29,0.3); }
 
+      /* ── BILLABLE TILE — visually distinct ── */
+      .today-billable-wrap {
+        background: #301C1D;
+        border: 2px solid rgba(255,254,231,0.15);
+        padding: 0;
+        width: 100%;
+      }
+      .today-billable-header {
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #FFFEE7;
+        padding: 12px 16px 10px;
+        border-bottom: 1px solid rgba(255,254,231,0.1);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .today-billable-header .bill-accent {
+        font-family: 'Space Mono', monospace;
+        font-size: 10px;
+        color: #5b8bd4;
+        letter-spacing: 0.1em;
+      }
+      .today-billable-body {
+        padding: 8px 0;
+      }
+
       /* ── BILLABLE MINI TABLE ── */
       .today-bill-table {
         width: calc(100% - 24px);
@@ -2518,25 +2529,26 @@
         border-collapse: collapse;
         font-family: 'Space Mono', monospace;
         font-size: 11px;
-        color: #301C1D;
+        color: rgba(255,254,231,0.8);
       }
       .today-bill-table th {
         font-size: 9px;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: rgba(48,28,29,0.5);
+        color: rgba(255,254,231,0.35);
         text-align: left;
         padding: 4px 6px;
-        border-bottom: 1.5px solid rgba(48,28,29,0.12);
+        border-bottom: 1px solid rgba(255,254,231,0.1);
       }
       .today-bill-table td {
         padding: 5px 6px;
-        border-bottom: 1px solid rgba(48,28,29,0.06);
+        border-bottom: 1px solid rgba(255,254,231,0.05);
         vertical-align: middle;
       }
       .today-bill-table tfoot td {
         font-weight: bold;
-        border-top: 1.5px solid rgba(48,28,29,0.15);
+        color: #5b8bd4;
+        border-top: 1px solid rgba(255,254,231,0.12);
         border-bottom: none;
       }
 
@@ -2584,7 +2596,8 @@
 
       /* ── RESPONSIVE ── */
       @media (max-width: 900px) {
-        .today-content { flex-direction: column; }
+        .today-content { flex-direction: column-reverse; }
+        .today-left { width: 100%; }
         .today-right { width: 100%; }
       }
       @media (max-width: 600px) {
@@ -4723,6 +4736,15 @@
    * Called on tab switch and after any item mutation.
    */
   function renderSortedList() {
+    // Also refresh Today tab tiles if that tab is active
+    if (!renderSortedList._refreshing) {
+      const todaySec = document.getElementById('today');
+      if (todaySec && todaySec.classList.contains('visible') && typeof renderTodayTiles === 'function') {
+        renderSortedList._refreshing = true;
+        try { renderTodayTiles(); renderBingoCard(); } catch(e) {}
+        renderSortedList._refreshing = false;
+      }
+    }
     const el = document.getElementById('sorted-list-content');
     if (!el) return;
     let allItems = loadSortItems();
@@ -6374,8 +6396,13 @@
 
   // ── Render Completed Today tile ──
   function renderCompletedTodayTile() {
-    const container = document.getElementById('today-completed-tile');
-    if (!container) return;
+    const wrap = document.getElementById('today-completed-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    const card = document.createElement('div');
+    card.className = 'today-tile';
+
     const items = loadSortItems().filter(it => it.listCompleted && it.completedOn);
     const today = todayStr();
     const todayItems = items.filter(it => {
@@ -6387,15 +6414,21 @@
       return d === today;
     });
 
-    const body = container.querySelector('.today-tile-body');
-    if (!body) return;
-    body.innerHTML = '';
+    // Header in sorted-list style
+    const hdr = document.createElement('div');
+    hdr.className = 'sl-bucket-header';
+    hdr.innerHTML = '<span class="sl-hdr-text" style="background:#7FA497;color:#FFFEE7;">Completed Today</span>';
+    const countSpan = document.createElement('span');
+    countSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
+    countSpan.textContent = todayItems.length + ' item' + (todayItems.length !== 1 ? 's' : '');
+    hdr.appendChild(countSpan);
+    card.appendChild(hdr);
 
     if (todayItems.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
       empty.textContent = 'Nothing completed yet today';
-      body.appendChild(empty);
+      card.appendChild(empty);
     } else {
       todayItems.forEach(item => {
         const row = document.createElement('div');
@@ -6416,10 +6449,11 @@
           badge.textContent = item.completedMins + 'm';
           row.appendChild(badge);
         }
-        body.appendChild(row);
+        card.appendChild(row);
       });
     }
 
+    // Add task input
     const inp = document.createElement('input');
     inp.className = 'today-add-input';
     inp.placeholder = '+ add completed task…';
@@ -6429,10 +6463,8 @@
         inp.value = '';
       }
     };
-    body.appendChild(inp);
-
-    const countEl = container.querySelector('.today-tile-count');
-    if (countEl) countEl.textContent = todayItems.length;
+    card.appendChild(inp);
+    wrap.appendChild(card);
   }
 
   function addCompletedTodayItem(text) {
@@ -6450,149 +6482,111 @@
   }
   window.addCompletedTodayItem = addCompletedTodayItem;
 
-  // ── Render Must Today tile ──
+  // ── Render Must Today tile (reuses buildBucketCard from sorted list) ──
   function renderMustTodayTile() {
-    const container = document.getElementById('today-must-tile');
-    if (!container) return;
-    const items = loadSortItems().filter(it => it.timing === 'must' && !it.listCompleted);
-    const body = container.querySelector('.today-tile-body');
-    if (!body) return;
-    body.innerHTML = '';
-
-    if (items.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
-      empty.textContent = 'No must-do items';
-      body.appendChild(empty);
-    } else {
-      items.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'today-item-row';
-        const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = false;
-        cb.style.flexShrink = '0';
-        cb.addEventListener('change', () => {
-          slToggleItem(item.id, cb.checked);
-          setTimeout(() => { renderTodayTiles(); renderBingoCard(); }, 150);
-        });
-        row.appendChild(cb);
-        const txt = document.createElement('span');
-        txt.className = 'today-item-text';
-        txt.textContent = displayText;
-        row.appendChild(txt);
-        body.appendChild(row);
-      });
-    }
-    const countEl = container.querySelector('.today-tile-count');
-    if (countEl) countEl.textContent = items.length;
+    const wrap = document.getElementById('today-must-wrap');
+    if (!wrap) return;
+    sortAllItems = loadSortItems();
+    const items = sortAllItems.filter(it => it.timing === 'must');
+    const view = SL_VIEWS.timing;
+    const bucket = { key: 'must', label: 'Must Today', accent: '#E94D32' };
+    wrap.innerHTML = '';
+    const card = buildBucketCard(bucket, items, view);
+    wrap.appendChild(card);
   }
 
-  // ── Render Ideally Today tile ──
+  // ── Render Ideally Today tile (reuses buildBucketCard from sorted list) ──
   function renderIdeallyTodayTile() {
-    const container = document.getElementById('today-ideally-tile');
-    if (!container) return;
-    const items = loadSortItems().filter(it => it.timing === 'ideally' && !it.listCompleted);
-    const body = container.querySelector('.today-tile-body');
-    if (!body) return;
-    body.innerHTML = '';
-
-    if (items.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
-      empty.textContent = 'No ideally-today items';
-      body.appendChild(empty);
-    } else {
-      items.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'today-item-row';
-        const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = false;
-        cb.style.flexShrink = '0';
-        cb.addEventListener('change', () => {
-          slToggleItem(item.id, cb.checked);
-          setTimeout(() => { renderTodayTiles(); renderBingoCard(); }, 150);
-        });
-        row.appendChild(cb);
-        const txt = document.createElement('span');
-        txt.className = 'today-item-text';
-        txt.textContent = displayText;
-        row.appendChild(txt);
-        body.appendChild(row);
-      });
-    }
-    const countEl = container.querySelector('.today-tile-count');
-    if (countEl) countEl.textContent = items.length;
+    const wrap = document.getElementById('today-ideally-wrap');
+    if (!wrap) return;
+    sortAllItems = loadSortItems();
+    const items = sortAllItems.filter(it => it.timing === 'ideally');
+    const view = SL_VIEWS.timing;
+    const bucket = { key: 'ideally', label: 'Ideally Today', accent: '#F7B338' };
+    wrap.innerHTML = '';
+    const card = buildBucketCard(bucket, items, view);
+    wrap.appendChild(card);
   }
 
-  // ── Render Billable Summary tile ──
+  // ── Render Billable Summary tile (dark theme, visually distinct) ──
   function renderBillableSummaryTile() {
-    const container = document.getElementById('today-billable-tile');
+    const container = document.getElementById('today-billable-wrap');
     if (!container) return;
-    const body = container.querySelector('.today-tile-body');
-    if (!body) return;
-    body.innerHTML = '';
+    container.innerHTML = '';
+
+    // Header
+    const hdr = document.createElement('div');
+    hdr.className = 'today-billable-header';
+    hdr.innerHTML = '<span>Billable Hours</span>';
 
     const today = todayStr();
     const allRows = collectBillableRows();
     const todayRows = allRows.filter(r => r.date === today);
-
-    if (todayRows.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
-      empty.textContent = 'No billable time logged today';
-      body.appendChild(empty);
-      return;
-    }
-
     const totalMins = todayRows.reduce((s, r) => s + Number(r.mins), 0);
     const totalHrs = (totalMins / 60).toFixed(1);
 
-    const table = document.createElement('table');
-    table.className = 'today-bill-table';
+    const accent = document.createElement('span');
+    accent.className = 'bill-accent';
+    accent.textContent = totalHrs + ' hrs';
+    accent.style.marginLeft = 'auto';
+    hdr.appendChild(accent);
+    container.appendChild(hdr);
 
-    const thead = document.createElement('thead');
-    thead.innerHTML = '<tr><th>Client</th><th>Description</th><th style="text-align:right">Min</th><th style="text-align:right">Hrs</th><th></th></tr>';
-    table.appendChild(thead);
+    const body = document.createElement('div');
+    body.className = 'today-billable-body';
 
-    const tfoot = document.createElement('tfoot');
-    tfoot.innerHTML = '<tr><td colspan="2" style="font-weight:bold">Total</td><td style="text-align:right;font-weight:bold">' + totalMins + '</td><td style="text-align:right;font-weight:bold">' + totalHrs + '</td><td></td></tr>';
-    table.appendChild(tfoot);
+    if (todayRows.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.25);padding:10px 16px;";
+      empty.textContent = 'No billable time logged today';
+      body.appendChild(empty);
+    } else {
+      const table = document.createElement('table');
+      table.className = 'today-bill-table';
 
-    const tbody = document.createElement('tbody');
-    window._todayBillableRowMap = {};
-    todayRows.forEach(r => {
-      const editKey = r._origKey || (r.date + '|' + r.client + '|' + r.project + '|' + r.desc);
-      window._todayBillableRowMap[editKey] = r;
-      const tr = document.createElement('tr');
-      const cells = [
-        { val: r.client, extra: '' },
-        { val: r.desc, extra: '' },
-        { val: r.mins, extra: 'text-align:right' },
-        { val: (Number(r.mins)/60).toFixed(1), extra: 'text-align:right' },
-      ];
-      cells.forEach(c => {
-        const td = document.createElement('td');
-        if (c.extra) td.style.cssText = c.extra;
-        td.textContent = c.val;
-        tr.appendChild(td);
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th>Client</th><th>Description</th><th style="text-align:right">Min</th><th style="text-align:right">Hrs</th><th></th></tr>';
+      table.appendChild(thead);
+
+      const tfoot = document.createElement('tfoot');
+      tfoot.innerHTML = '<tr><td colspan="2">Total</td><td style="text-align:right">' + totalMins + '</td><td style="text-align:right">' + totalHrs + '</td><td></td></tr>';
+      table.appendChild(tfoot);
+
+      const tbody = document.createElement('tbody');
+      window._todayBillableRowMap = {};
+      todayRows.forEach(r => {
+        const editKey = r._origKey || (r.date + '|' + r.client + '|' + r.project + '|' + r.desc);
+        window._todayBillableRowMap[editKey] = r;
+        const tr = document.createElement('tr');
+        const cells = [
+          { val: r.client, extra: '' },
+          { val: r.desc, extra: '' },
+          { val: r.mins, extra: 'text-align:right' },
+          { val: (Number(r.mins)/60).toFixed(1), extra: 'text-align:right' },
+        ];
+        cells.forEach(c => {
+          const td = document.createElement('td');
+          if (c.extra) td.style.cssText = c.extra;
+          td.textContent = c.val;
+          tr.appendChild(td);
+        });
+        const editTd = document.createElement('td');
+        editTd.style.cssText = 'text-align:center;width:28px;';
+        const editBtn = document.createElement('button');
+        editBtn.style.cssText = 'background:none;border:none;color:rgba(255,254,231,0.25);font-size:13px;cursor:pointer;padding:2px;transition:color 0.1s;';
+        editBtn.textContent = '✎';
+        editBtn.title = 'Edit';
+        editBtn.onmouseover = () => editBtn.style.color = '#5b8bd4';
+        editBtn.onmouseout = () => editBtn.style.color = 'rgba(255,254,231,0.25)';
+        editBtn.onclick = () => openBillableEditModal(r, editKey);
+        editTd.appendChild(editBtn);
+        tr.appendChild(editTd);
+        tbody.appendChild(tr);
       });
-      const editTd = document.createElement('td');
-      editTd.style.cssText = 'text-align:center;width:28px;';
-      const editBtn = document.createElement('button');
-      editBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.3);font-size:13px;cursor:pointer;padding:2px;';
-      editBtn.textContent = '✎';
-      editBtn.title = 'Edit';
-      editBtn.onclick = () => openBillableEditModal(r, editKey);
-      editTd.appendChild(editBtn);
-      tr.appendChild(editTd);
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    body.appendChild(table);
+      table.appendChild(tbody);
+      body.appendChild(table);
+    }
+    container.appendChild(body);
   }
 
   // ── Daily FL Activities ──
@@ -6619,13 +6613,25 @@
   }
 
   function renderDailyFLTile() {
-    const container = document.getElementById('today-dailyfl-tile');
-    if (!container) return;
-    const body = container.querySelector('.today-tile-body');
-    if (!body) return;
-    body.innerHTML = '';
+    const wrap = document.getElementById('today-dailyfl-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+
+    const card = document.createElement('div');
+    card.className = 'today-tile';
 
     const data = getDailyFLData();
+    const doneCount = data.items.filter(i => i.completedToday).length;
+
+    // Header
+    const hdr = document.createElement('div');
+    hdr.className = 'sl-bucket-header';
+    hdr.innerHTML = '<span class="sl-hdr-text" style="background:#122860;color:#FFFEE7;">Daily FL</span>';
+    const countSpan = document.createElement('span');
+    countSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
+    countSpan.textContent = doneCount + '/' + data.items.length;
+    hdr.appendChild(countSpan);
+    card.appendChild(hdr);
 
     data.items.forEach(item => {
       const row = document.createElement('div');
@@ -6699,7 +6705,7 @@
 
       row.appendChild(editBtn);
       row.appendChild(delBtn);
-      body.appendChild(row);
+      card.appendChild(row);
     });
 
     const inp = document.createElement('input');
@@ -6720,13 +6726,8 @@
         renderDailyFLTile();
       }
     };
-    body.appendChild(inp);
-
-    const countEl = container.querySelector('.today-tile-count');
-    if (countEl) {
-      const done = data.items.filter(i => i.completedToday).length;
-      countEl.textContent = done + '/' + data.items.length;
-    }
+    card.appendChild(inp);
+    wrap.appendChild(card);
   }
 
   function dflConfirmComplete() {
@@ -6770,34 +6771,6 @@
     renderDailyFLTile();
   }
 
-  /** Helper to build a today-tab tile with sorted-list card styling */
-  function buildTodayTile(id, label, accentColor, textColor) {
-    const tile = document.createElement('div');
-    tile.className = 'today-tile';
-    tile.id = id;
-
-    const hdr = document.createElement('div');
-    hdr.className = 'today-tile-header';
-    const hdrText = document.createElement('span');
-    hdrText.className = 'today-hdr-text';
-    hdrText.style.background = accentColor;
-    hdrText.style.color = textColor;
-    hdrText.textContent = label;
-    hdr.appendChild(hdrText);
-
-    const count = document.createElement('span');
-    count.className = 'today-tile-count';
-    count.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
-    hdr.appendChild(count);
-
-    const body = document.createElement('div');
-    body.className = 'today-tile-body';
-
-    tile.appendChild(hdr);
-    tile.appendChild(body);
-    return tile;
-  }
-
   /** Master render function for Today tab */
   function renderTodayTab() {
     const content = document.getElementById('today-content');
@@ -6805,15 +6778,34 @@
 
     content.innerHTML = '';
 
-    // LEFT COLUMN — list tiles
+    // LEFT COLUMN — list tiles (same width/style as sorted list)
     const left = document.createElement('div');
     left.className = 'today-left';
 
-    left.appendChild(buildTodayTile('today-must-tile', 'Must Today', '#E94D32', '#FFFEE7'));
-    left.appendChild(buildTodayTile('today-ideally-tile', 'Ideally Today', '#F7B338', '#301C1D'));
-    left.appendChild(buildTodayTile('today-dailyfl-tile', 'Daily FL', '#122860', '#FFFEE7'));
-    left.appendChild(buildTodayTile('today-completed-tile', 'Completed Today', '#7FA497', '#FFFEE7'));
-    left.appendChild(buildTodayTile('today-billable-tile', 'Billable Hours', '#5b8bd4', '#FFFEE7'));
+    // Must Today & Ideally Today — direct reuse of buildBucketCard
+    const mustWrap = document.createElement('div');
+    mustWrap.id = 'today-must-wrap';
+    left.appendChild(mustWrap);
+
+    const ideallyWrap = document.createElement('div');
+    ideallyWrap.id = 'today-ideally-wrap';
+    left.appendChild(ideallyWrap);
+
+    // Daily FL
+    const dflWrap = document.createElement('div');
+    dflWrap.id = 'today-dailyfl-wrap';
+    left.appendChild(dflWrap);
+
+    // Completed Today
+    const compWrap = document.createElement('div');
+    compWrap.id = 'today-completed-wrap';
+    left.appendChild(compWrap);
+
+    // Billable Hours (dark theme, visually distinct)
+    const billWrap = document.createElement('div');
+    billWrap.id = 'today-billable-wrap';
+    billWrap.className = 'today-billable-wrap';
+    left.appendChild(billWrap);
 
     content.appendChild(left);
 
@@ -6821,23 +6813,36 @@
     const right = document.createElement('div');
     right.className = 'today-right';
 
-    const bingoWrap = document.createElement('div');
-    bingoWrap.style.cssText = 'background:#FFFEE7;padding:0;';
+    const bingoCard = document.createElement('div');
+    bingoCard.className = 'sl-bucket-card';
 
     // Bingo header in sorted-list style
     const bingoHdr = document.createElement('div');
-    bingoHdr.className = 'today-tile-header';
-    bingoHdr.innerHTML = '<span class="today-hdr-text" style="background:#301C1D;color:#FFFEE7;">Today\'s Bingo</span>' +
-      '<span id="bingo-progress" style="font-family:\'Space Mono\',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.06em;margin-left:auto;"></span>' +
-      '<button onclick="if(confirm(\'Regenerate bingo card? Progress will be lost.\')){localStorage.removeItem(\'' + TODAY_BINGO_KEY + '\');renderBingoCard();}" style="background:none;border:1px solid rgba(48,28,29,0.25);color:#301C1D;font-family:\'Space Mono\',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;cursor:pointer;opacity:0.5;transition:opacity 0.15s;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">↻ New</button>';
-    bingoWrap.appendChild(bingoHdr);
+    bingoHdr.className = 'sl-bucket-header';
+    bingoHdr.style.display = 'flex';
+    bingoHdr.style.alignItems = 'center';
+    bingoHdr.style.gap = '8px';
+    bingoHdr.innerHTML = '<span class="sl-hdr-text" style="background:#301C1D;color:#FFFEE7;">Today\'s Bingo</span>';
+
+    const progSpan = document.createElement('span');
+    progSpan.id = 'bingo-progress';
+    progSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.06em;margin-left:auto;";
+    bingoHdr.appendChild(progSpan);
+
+    const newBtn = document.createElement('button');
+    newBtn.textContent = '↻ New';
+    newBtn.style.cssText = "background:none;border:1px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;cursor:pointer;opacity:0.5;transition:opacity 0.15s;";
+    newBtn.onmouseover = () => newBtn.style.opacity = '1';
+    newBtn.onmouseout = () => newBtn.style.opacity = '0.5';
+    newBtn.onclick = () => { if (confirm('Regenerate bingo card? Progress will be lost.')) { localStorage.removeItem(TODAY_BINGO_KEY); renderBingoCard(); } };
+    bingoHdr.appendChild(newBtn);
+    bingoCard.appendChild(bingoHdr);
 
     const bingoContainer = document.createElement('div');
     bingoContainer.id = 'bingo-card-container';
-    bingoContainer.style.padding = '0';
-    bingoWrap.appendChild(bingoContainer);
+    bingoCard.appendChild(bingoContainer);
 
-    right.appendChild(bingoWrap);
+    right.appendChild(bingoCard);
     content.appendChild(right);
 
     renderBingoCard();
