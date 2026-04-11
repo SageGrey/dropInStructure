@@ -4,8 +4,8 @@
     {
       "name": "dis",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8181", "--directory", "/Users/sagevoorhees/Documents/GitHub/dropInStructure"],
-      "port": 8181
+      "runtimeArgs": ["-m", "http.server", "8282", "--directory", "/Users/sagevoorhees/Documents/GitHub/dropInStructure"],
+      "port": 8282
     }
   ]
 }

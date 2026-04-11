@@ -2335,37 +2335,36 @@
       .bingo-grid {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: 4px;
+        gap: 3px;
         padding: 0;
         background: #301C1D;
-        max-width: 100%;
+        max-width: 560px;
         margin: 0;
       }
       .bingo-cell {
-        aspect-ratio: 1;
         background: #FFFEE7;
-        border: 2px solid #301C1D;
+        border: none;
         cursor: pointer;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         text-align: center;
-        padding: 4px;
+        padding: 12px 6px;
         font-family: 'Space Mono', monospace;
-        font-size: 10px;
+        font-size: 11px;
         color: #301C1D;
         position: relative;
         overflow: hidden;
         transition: all 0.15s;
-        line-height: 1.2;
+        line-height: 1.25;
         word-break: break-word;
+        min-height: 64px;
       }
       .bingo-cell:hover { background: #f0eeda; }
       .bingo-cell.bingo-completed {
         background: #7FA497;
         color: #FFFEE7;
-        border-color: #7FA497;
       }
       .bingo-cell.bingo-completed::after {
         content: '✓';
@@ -2388,15 +2387,13 @@
       }
       .bingo-cell.bingo-free {
         background: #F7B338;
-        border-color: #F7B338;
         font-family: 'Archivo Black', sans-serif;
-        font-size: 11px;
+        font-size: 13px;
         text-transform: uppercase;
         color: #301C1D;
       }
       .bingo-cell.bingo-free.bingo-completed {
         background: #7FA497;
-        border-color: #7FA497;
         color: #FFFEE7;
       }
       .bingo-cell .bingo-text {
@@ -2405,11 +2402,11 @@
         text-overflow: ellipsis;
       }
       .bingo-cell .bingo-tag {
-        font-size: 7px;
+        font-size: 8px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        opacity: 0.6;
-        margin-top: 2px;
+        opacity: 0.55;
+        margin-top: 3px;
       }
 
       /* Bingo line flash animation */
@@ -2436,13 +2433,15 @@
         align-items: flex-start;
         flex-wrap: wrap;
         margin-bottom: 8px;
+        max-width: 900px;
       }
       .today-col {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        flex: 1;
+        width: calc(50% - 4px);
         min-width: 280px;
+        flex-shrink: 0;
       }
       /* Completed / Daily FL tiles reuse sl-bucket-card styling */
       .today-tile {
@@ -2595,12 +2594,13 @@
 
       /* ── RESPONSIVE ── */
       @media (max-width: 700px) {
-        .today-col { min-width: 100%; }
+        .today-col { width: 100%; min-width: 100%; }
+        .today-tiles-row { max-width: 100%; }
       }
       @media (max-width: 600px) {
         .bingo-grid { max-width: 100%; }
-        .bingo-cell { font-size: 8px; }
-        .bingo-cell .bingo-tag { font-size: 6px; }
+        .bingo-cell { font-size: 9px; padding: 8px 4px; min-height: 52px; }
+        .bingo-cell .bingo-tag { font-size: 7px; }
       }
     </style>
 
