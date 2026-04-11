@@ -2335,16 +2335,16 @@
       .bingo-grid {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: 3px;
-        padding: 6px;
-        background: rgba(48,28,29,0.12);
-        max-width: 560px;
+        gap: 4px;
+        padding: 0;
+        background: #301C1D;
+        max-width: 100%;
         margin: 0;
       }
       .bingo-cell {
         aspect-ratio: 1;
         background: #FFFEE7;
-        border: 1.5px solid rgba(48,28,29,0.15);
+        border: 2px solid #301C1D;
         cursor: pointer;
         display: flex;
         flex-direction: column;
@@ -2427,22 +2427,22 @@
       /* ── TODAY LAYOUT ── */
       .today-content {
         padding: 8px;
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
         background: #301C1D;
         min-height: 80vh;
       }
-      .today-left {
+      .today-tiles-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .today-col {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        width: 340px;
-        flex-shrink: 0;
-      }
-      .today-right {
         flex: 1;
-        min-width: 0;
+        min-width: 280px;
       }
       /* Completed / Daily FL tiles reuse sl-bucket-card styling */
       .today-tile {
@@ -2452,7 +2452,6 @@
         display: flex;
         flex-direction: column;
       }
-      .today-tile .sl-bucket-header { /* inherit sorted list header */ }
       .today-item-row {
         display: flex;
         align-items: flex-start;
@@ -2595,10 +2594,8 @@
       }
 
       /* ── RESPONSIVE ── */
-      @media (max-width: 900px) {
-        .today-content { flex-direction: column-reverse; }
-        .today-left { width: 100%; }
-        .today-right { width: 100%; }
+      @media (max-width: 700px) {
+        .today-col { min-width: 100%; }
       }
       @media (max-width: 600px) {
         .bingo-grid { max-width: 100%; }
@@ -5843,6 +5840,11 @@
       item.completedMins = null;
       saveSortItems(sortAllItems);
       renderSortedList();
+      // Refresh Today tab if visible
+      const todaySec = document.getElementById('today');
+      if (todaySec && todaySec.classList.contains('visible') && typeof renderTodayTab === 'function') {
+        setTimeout(() => renderTodayTab(), 50);
+      }
       return;
     }
 
@@ -5856,6 +5858,11 @@
       saveSortItems(sortAllItems);
       ensureDailyLogEntry(todayStr());
       renderSortedList();
+      // Refresh Today tab if visible
+      const todaySec = document.getElementById('today');
+      if (todaySec && todaySec.classList.contains('visible') && typeof renderTodayTab === 'function') {
+        setTimeout(() => renderTodayTab(), 50);
+      }
     }
   }
 
@@ -6308,7 +6315,7 @@
       _bingoPendingCellIdx = null;
     }
     if (document.getElementById('today') && document.getElementById('today').classList.contains('visible')) {
-      try { renderTodayTiles(); } catch(e) {}
+      setTimeout(() => { try { renderTodayTab(); } catch(e) {} }, 50);
     }
   }
   window.slConfirmComplete = _extendedSlConfirmComplete;
@@ -6778,72 +6785,71 @@
 
     content.innerHTML = '';
 
-    // LEFT COLUMN — list tiles (same width/style as sorted list)
-    const left = document.createElement('div');
-    left.className = 'today-left';
+    // ── TWO COLUMNS OF TILES ──
+    const tilesRow = document.createElement('div');
+    tilesRow.className = 'today-tiles-row';
 
-    // Must Today & Ideally Today — direct reuse of buildBucketCard
+    // Column 1: Must Today + Daily FL + Billable
+    const col1 = document.createElement('div');
+    col1.className = 'today-col';
+
     const mustWrap = document.createElement('div');
     mustWrap.id = 'today-must-wrap';
-    left.appendChild(mustWrap);
+    col1.appendChild(mustWrap);
 
-    const ideallyWrap = document.createElement('div');
-    ideallyWrap.id = 'today-ideally-wrap';
-    left.appendChild(ideallyWrap);
-
-    // Daily FL
     const dflWrap = document.createElement('div');
     dflWrap.id = 'today-dailyfl-wrap';
-    left.appendChild(dflWrap);
+    col1.appendChild(dflWrap);
 
-    // Completed Today
-    const compWrap = document.createElement('div');
-    compWrap.id = 'today-completed-wrap';
-    left.appendChild(compWrap);
-
-    // Billable Hours (dark theme, visually distinct)
     const billWrap = document.createElement('div');
     billWrap.id = 'today-billable-wrap';
     billWrap.className = 'today-billable-wrap';
-    left.appendChild(billWrap);
+    col1.appendChild(billWrap);
 
-    content.appendChild(left);
+    tilesRow.appendChild(col1);
 
-    // RIGHT COLUMN — bingo card
-    const right = document.createElement('div');
-    right.className = 'today-right';
+    // Column 2: Ideally Today + Completed Today
+    const col2 = document.createElement('div');
+    col2.className = 'today-col';
 
-    const bingoCard = document.createElement('div');
-    bingoCard.className = 'sl-bucket-card';
+    const ideallyWrap = document.createElement('div');
+    ideallyWrap.id = 'today-ideally-wrap';
+    col2.appendChild(ideallyWrap);
 
-    // Bingo header in sorted-list style
+    const compWrap = document.createElement('div');
+    compWrap.id = 'today-completed-wrap';
+    col2.appendChild(compWrap);
+
+    tilesRow.appendChild(col2);
+    content.appendChild(tilesRow);
+
+    // ── BINGO BOARD (below tiles, directly on dark background) ──
+    const bingoSection = document.createElement('div');
+    bingoSection.style.cssText = 'margin-top:4px;';
+
     const bingoHdr = document.createElement('div');
-    bingoHdr.className = 'sl-bucket-header';
-    bingoHdr.style.display = 'flex';
-    bingoHdr.style.alignItems = 'center';
-    bingoHdr.style.gap = '8px';
-    bingoHdr.innerHTML = '<span class="sl-hdr-text" style="background:#301C1D;color:#FFFEE7;">Today\'s Bingo</span>';
+    bingoHdr.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 4px 4px;";
+    bingoHdr.innerHTML = '<span style="font-family:\'Archivo Black\',sans-serif;font-size:15px;color:#FFFEE7;text-transform:uppercase;letter-spacing:0.04em;">Today\'s Bingo</span>';
 
     const progSpan = document.createElement('span');
     progSpan.id = 'bingo-progress';
-    progSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.06em;margin-left:auto;";
+    progSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(255,254,231,0.4);letter-spacing:0.06em;margin-left:auto;";
     bingoHdr.appendChild(progSpan);
 
     const newBtn = document.createElement('button');
     newBtn.textContent = '↻ New';
-    newBtn.style.cssText = "background:none;border:1px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;cursor:pointer;opacity:0.5;transition:opacity 0.15s;";
-    newBtn.onmouseover = () => newBtn.style.opacity = '1';
-    newBtn.onmouseout = () => newBtn.style.opacity = '0.5';
+    newBtn.style.cssText = "background:none;border:1px solid rgba(255,254,231,0.2);color:rgba(255,254,231,0.35);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:4px 8px;cursor:pointer;transition:all 0.15s;";
+    newBtn.onmouseover = () => { newBtn.style.color = 'rgba(255,254,231,0.8)'; newBtn.style.borderColor = 'rgba(255,254,231,0.5)'; };
+    newBtn.onmouseout = () => { newBtn.style.color = 'rgba(255,254,231,0.35)'; newBtn.style.borderColor = 'rgba(255,254,231,0.2)'; };
     newBtn.onclick = () => { if (confirm('Regenerate bingo card? Progress will be lost.')) { localStorage.removeItem(TODAY_BINGO_KEY); renderBingoCard(); } };
     bingoHdr.appendChild(newBtn);
-    bingoCard.appendChild(bingoHdr);
+    bingoSection.appendChild(bingoHdr);
 
     const bingoContainer = document.createElement('div');
     bingoContainer.id = 'bingo-card-container';
-    bingoCard.appendChild(bingoContainer);
+    bingoSection.appendChild(bingoContainer);
 
-    right.appendChild(bingoCard);
-    content.appendChild(right);
+    content.appendChild(bingoSection);
 
     renderBingoCard();
     renderTodayTiles();
