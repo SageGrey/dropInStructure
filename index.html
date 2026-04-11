@@ -2335,16 +2335,16 @@
       .bingo-grid {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: 4px;
-        padding: 8px;
-        background: #301C1D;
+        gap: 3px;
+        padding: 6px;
+        background: rgba(48,28,29,0.12);
         max-width: 560px;
-        margin: 0 auto;
+        margin: 0;
       }
       .bingo-cell {
         aspect-ratio: 1;
         background: #FFFEE7;
-        border: 2px solid #301C1D;
+        border: 1.5px solid rgba(48,28,29,0.15);
         cursor: pointer;
         display: flex;
         flex-direction: column;
@@ -2424,75 +2424,97 @@
         animation: bingoFlash 0.6s ease-in-out;
       }
 
-      /* ── TODAY TILES ── */
+      /* ── TODAY LAYOUT ── */
       .today-content {
         padding: 8px;
         display: flex;
-        flex-wrap: wrap;
         gap: 8px;
         align-items: flex-start;
         background: #301C1D;
         min-height: 80vh;
       }
-      .today-tile {
-        background: #FFFEE7;
-        border: 2px solid #301C1D;
-        width: 340px;
-        max-width: calc(100vw - 24px);
+      .today-left {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+      }
+      .today-right {
+        width: 420px;
         flex-shrink: 0;
       }
-      .today-tile-header {
-        padding: 10px 14px;
-        font-family: 'Archivo Black', sans-serif;
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        line-height: 1;
+      .today-tile {
+        background: #FFFEE7;
+        padding: 0;
+        width: 100%;
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
       }
-      .today-tile-body {
-        padding: 8px 12px 12px;
-      }
-      .today-item-row {
+      .today-tile-header {
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 15px;
+        color: #301C1D;
+        background: #FFFEE7;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 14px 16px 12px;
+        border-bottom: 2px solid rgba(48,28,29,0.12);
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 0;
+      }
+      .today-tile-header .today-hdr-text {
+        padding: 2px 8px 3px;
+        display: inline-block;
+      }
+      .today-tile-body {
+        padding: 0;
+      }
+      .today-item-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 7px 16px;
         border-bottom: 1px solid rgba(48,28,29,0.06);
-        font-family: 'Space Mono', monospace;
-        font-size: 12px;
-        color: #301C1D;
+      }
+      .today-item-row:last-child { border-bottom: none; }
+      .today-item-row input[type=checkbox] {
+        margin-top: 2px;
+        flex-shrink: 0;
+        width: 14px; height: 14px;
+        accent-color: #7FA497;
+        cursor: pointer;
       }
       .today-item-row.today-done .today-item-text {
         text-decoration: line-through;
-        opacity: 0.45;
+        color: rgba(48,28,29,0.35);
       }
       .today-item-text {
+        font-family: 'Space Mono', monospace;
+        font-size: 12px;
+        color: #301C1D;
+        line-height: 1.5;
         flex: 1;
         min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
       .today-add-input {
-        width: 100%;
+        width: calc(100% - 32px);
         background: transparent;
         border: none;
         border-top: 1.5px solid rgba(48,28,29,0.12);
         color: #301C1D;
         font-family: 'Space Mono', monospace;
         font-size: 12px;
-        padding: 10px 0 6px;
+        padding: 10px 16px 8px;
         outline: none;
-        margin-top: 4px;
       }
       .today-add-input::placeholder { color: rgba(48,28,29,0.3); }
 
       /* ── BILLABLE MINI TABLE ── */
       .today-bill-table {
-        width: 100%;
+        width: calc(100% - 24px);
+        margin: 0 12px 8px;
         border-collapse: collapse;
         font-family: 'Space Mono', monospace;
         font-size: 11px;
@@ -2561,11 +2583,14 @@
       }
 
       /* ── RESPONSIVE ── */
+      @media (max-width: 900px) {
+        .today-content { flex-direction: column; }
+        .today-right { width: 100%; }
+      }
       @media (max-width: 600px) {
         .bingo-grid { max-width: 100%; }
         .bingo-cell { font-size: 8px; }
         .bingo-cell .bingo-tag { font-size: 6px; }
-        .today-tile { width: 100%; }
       }
     </style>
 
@@ -6069,7 +6094,7 @@
   /**
    * Generate a fresh 5x5 bingo grid for today.
    * Pulls items from sort buckets in priority order.
-   * Center cell (index 12) = "Drink Water" free space.
+   * Center cell (index 12) = "exist" free space with animal image.
    * Empty slots filled with animal illustrations.
    */
   function generateBingoGrid() {
@@ -6110,7 +6135,8 @@
     let si = 0;
     for (let i = 0; i < 25; i++) {
       if (i === 12) {
-        finalGrid.push({ type: 'free', text: '💧 Drink Water', completed: false });
+        const freeImg = animalImgs.length > 0 ? animalImgs[Math.floor(Math.random() * animalImgs.length)] : null;
+        finalGrid.push({ type: 'free', text: 'exist', imgUrl: freeImg, completed: false });
       } else {
         finalGrid.push(shuffled[si++]);
       }
@@ -6303,7 +6329,16 @@
       if (cell.type === 'free') {
         el.classList.add('bingo-free');
         if (cell.completed) el.classList.add('bingo-completed');
-        el.innerHTML = '<span class="bingo-text">' + cell.text + '</span>';
+        if (cell.imgUrl) {
+          const bgDiv = document.createElement('div');
+          bgDiv.style.cssText = 'position:absolute;inset:0;background-image:url(\'' + cell.imgUrl + '\');background-size:cover;background-position:center;opacity:0.3;';
+          el.appendChild(bgDiv);
+        }
+        const freeText = document.createElement('span');
+        freeText.className = 'bingo-text';
+        freeText.style.position = 'relative';
+        freeText.textContent = cell.text;
+        el.appendChild(freeText);
         el.onclick = () => bingoToggleCell(idx);
       } else if (cell.type === 'animal') {
         el.classList.add('bingo-animal');
@@ -6358,7 +6393,7 @@
 
     if (todayItems.length === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
       empty.textContent = 'Nothing completed yet today';
       body.appendChild(empty);
     } else {
@@ -6366,17 +6401,18 @@
         const row = document.createElement('div');
         row.className = 'today-item-row today-done';
         const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
-        const check = document.createElement('span');
-        check.style.cssText = 'color:#7FA497;font-size:14px;';
-        check.textContent = '✓';
-        row.appendChild(check);
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.disabled = true;
+        row.appendChild(cb);
         const txt = document.createElement('span');
         txt.className = 'today-item-text';
         txt.textContent = displayText;
         row.appendChild(txt);
         if (item.completedMins) {
           const badge = document.createElement('span');
-          badge.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:#7FA497;";
+          badge.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:#7FA497;letter-spacing:0.06em;";
           badge.textContent = item.completedMins + 'm';
           row.appendChild(badge);
         }
@@ -6425,7 +6461,7 @@
 
     if (items.length === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
       empty.textContent = 'No must-do items';
       body.appendChild(empty);
     } else {
@@ -6464,7 +6500,7 @@
 
     if (items.length === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
       empty.textContent = 'No ideally-today items';
       body.appendChild(empty);
     } else {
@@ -6506,7 +6542,7 @@
 
     if (todayRows.length === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
       empty.textContent = 'No billable time logged today';
       body.appendChild(empty);
       return;
@@ -6734,6 +6770,34 @@
     renderDailyFLTile();
   }
 
+  /** Helper to build a today-tab tile with sorted-list card styling */
+  function buildTodayTile(id, label, accentColor, textColor) {
+    const tile = document.createElement('div');
+    tile.className = 'today-tile';
+    tile.id = id;
+
+    const hdr = document.createElement('div');
+    hdr.className = 'today-tile-header';
+    const hdrText = document.createElement('span');
+    hdrText.className = 'today-hdr-text';
+    hdrText.style.background = accentColor;
+    hdrText.style.color = textColor;
+    hdrText.textContent = label;
+    hdr.appendChild(hdrText);
+
+    const count = document.createElement('span');
+    count.className = 'today-tile-count';
+    count.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
+    hdr.appendChild(count);
+
+    const body = document.createElement('div');
+    body.className = 'today-tile-body';
+
+    tile.appendChild(hdr);
+    tile.appendChild(body);
+    return tile;
+  }
+
   /** Master render function for Today tab */
   function renderTodayTab() {
     const content = document.getElementById('today-content');
@@ -6741,38 +6805,40 @@
 
     content.innerHTML = '';
 
-    // Bingo section
+    // LEFT COLUMN — list tiles
+    const left = document.createElement('div');
+    left.className = 'today-left';
+
+    left.appendChild(buildTodayTile('today-must-tile', 'Must Today', '#E94D32', '#FFFEE7'));
+    left.appendChild(buildTodayTile('today-ideally-tile', 'Ideally Today', '#F7B338', '#301C1D'));
+    left.appendChild(buildTodayTile('today-dailyfl-tile', 'Daily FL', '#122860', '#FFFEE7'));
+    left.appendChild(buildTodayTile('today-completed-tile', 'Completed Today', '#7FA497', '#FFFEE7'));
+    left.appendChild(buildTodayTile('today-billable-tile', 'Billable Hours', '#5b8bd4', '#FFFEE7'));
+
+    content.appendChild(left);
+
+    // RIGHT COLUMN — bingo card
+    const right = document.createElement('div');
+    right.className = 'today-right';
+
     const bingoWrap = document.createElement('div');
-    bingoWrap.style.cssText = 'width:100%;max-width:560px;margin:0 auto;';
-    bingoWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 0;">' +
-      '<div style="font-family:\'Archivo Black\',sans-serif;font-size:16px;color:#FFFEE7;text-transform:uppercase;letter-spacing:0.04em;">Today\'s Bingo</div>' +
-      '<div style="display:flex;align-items:center;gap:12px;">' +
-      '<span id="bingo-progress" style="font-family:\'Space Mono\',monospace;font-size:10px;color:rgba(255,254,231,0.5);letter-spacing:0.06em;"></span>' +
-      '<button onclick="if(confirm(\'Regenerate bingo card? Progress will be lost.\')){localStorage.removeItem(\'' + TODAY_BINGO_KEY + '\');renderBingoCard();}" style="background:none;border:1px solid rgba(255,254,231,0.2);color:rgba(255,254,231,0.35);font-family:\'Space Mono\',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:4px 8px;cursor:pointer;">↻ New</button>' +
-      '</div></div>' +
-      '<div id="bingo-card-container"></div>';
-    content.appendChild(bingoWrap);
+    bingoWrap.style.cssText = 'background:#FFFEE7;padding:0;';
 
-    // Tiles wrapper
-    const tilesWrap = document.createElement('div');
-    tilesWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;width:100%;padding:0 4px;';
+    // Bingo header in sorted-list style
+    const bingoHdr = document.createElement('div');
+    bingoHdr.className = 'today-tile-header';
+    bingoHdr.innerHTML = '<span class="today-hdr-text" style="background:#301C1D;color:#FFFEE7;">Today\'s Bingo</span>' +
+      '<span id="bingo-progress" style="font-family:\'Space Mono\',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.06em;margin-left:auto;"></span>' +
+      '<button onclick="if(confirm(\'Regenerate bingo card? Progress will be lost.\')){localStorage.removeItem(\'' + TODAY_BINGO_KEY + '\');renderBingoCard();}" style="background:none;border:1px solid rgba(48,28,29,0.25);color:#301C1D;font-family:\'Space Mono\',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;cursor:pointer;opacity:0.5;transition:opacity 0.15s;" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">↻ New</button>';
+    bingoWrap.appendChild(bingoHdr);
 
-    // Must Today
-    tilesWrap.innerHTML += '<div class="today-tile" id="today-must-tile"><div class="today-tile-header" style="background:#E94D32;color:#FFFEE7;"><span>Must Today</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;"></span></div><div class="today-tile-body"></div></div>';
+    const bingoContainer = document.createElement('div');
+    bingoContainer.id = 'bingo-card-container';
+    bingoContainer.style.padding = '0';
+    bingoWrap.appendChild(bingoContainer);
 
-    // Ideally Today
-    tilesWrap.innerHTML += '<div class="today-tile" id="today-ideally-tile"><div class="today-tile-header" style="background:#F7B338;color:#301C1D;"><span>Ideally Today</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;"></span></div><div class="today-tile-body"></div></div>';
-
-    // Daily FL
-    tilesWrap.innerHTML += '<div class="today-tile" id="today-dailyfl-tile"><div class="today-tile-header" style="background:#122860;color:#FFFEE7;"><span>Daily FL</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;"></span></div><div class="today-tile-body"></div></div>';
-
-    // Completed Today
-    tilesWrap.innerHTML += '<div class="today-tile" id="today-completed-tile"><div class="today-tile-header" style="background:#7FA497;color:#FFFEE7;"><span>Completed Today</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;">0</span></div><div class="today-tile-body"></div></div>';
-
-    // Billable Hours
-    tilesWrap.innerHTML += '<div class="today-tile" id="today-billable-tile" style="width:480px;"><div class="today-tile-header" style="background:#5b8bd4;color:#FFFEE7;"><span>Billable Hours</span></div><div class="today-tile-body"></div></div>';
-
-    content.appendChild(tilesWrap);
+    right.appendChild(bingoWrap);
+    content.appendChild(right);
 
     renderBingoCard();
     renderTodayTiles();
