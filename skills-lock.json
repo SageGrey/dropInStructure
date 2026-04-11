@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "code-review": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "computedHash": "919719020590499db120437b53defa7dcb05e138aa5ce9e55034b88dbad7fff8"
+    },
+    "frontend-design": {
+      "source": "october-academy/agent-plugins",
+      "sourceType": "github",
+      "computedHash": "74827328f7bee7335f5a0a5a7cdfec6b4b0541a7c824b0a4e92652c766cc1aff"
+    },
+    "java-code-review": {
+      "source": "decebals/claude-code-java",
+      "sourceType": "github",
+      "computedHash": "5ad43f17a91a29205b52c52f86812e4901b4d3e388d3e8d10b8618299ce9e020"
+    },
+    "wcag-design": {
+      "source": "alexsnchz/skills",
+      "sourceType": "github",
+      "computedHash": "5df795a3c0b8e030f665a9a412407c3fd4fe98454eb8d9f597f75cccf36e7e3a"
+    }
+  }
+}

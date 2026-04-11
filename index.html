@@ -2000,6 +2000,7 @@
 
 <nav>
   <button class="active" onclick="showSection('routines', this)">Routines</button>
+  <button onclick="showSection('today', this)" id="today-tab">Today</button>
   <button onclick="showSection('notches', this)" style="display:none">Notches</button>
   <button onclick="showSection('theoryweek', this)">Rough Hous.</button>
   <button onclick="showSection('archive', this)" style="display:none">Week Archive</button>
@@ -2326,6 +2327,272 @@
   </div><!-- ══ end #routines ══ -->
 
 
+
+  <!-- ══ TODAY TAB ══ -->
+  <div id="today" class="section">
+    <style>
+      /* ── BINGO CARD ── */
+      .bingo-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+        padding: 8px;
+        background: #301C1D;
+        max-width: 560px;
+        margin: 0 auto;
+      }
+      .bingo-cell {
+        aspect-ratio: 1;
+        background: #FFFEE7;
+        border: 2px solid #301C1D;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 4px;
+        font-family: 'Space Mono', monospace;
+        font-size: 10px;
+        color: #301C1D;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.15s;
+        line-height: 1.2;
+        word-break: break-word;
+      }
+      .bingo-cell:hover { background: #f0eeda; }
+      .bingo-cell.bingo-completed {
+        background: #7FA497;
+        color: #FFFEE7;
+        border-color: #7FA497;
+      }
+      .bingo-cell.bingo-completed::after {
+        content: '✓';
+        position: absolute;
+        top: 2px; right: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        opacity: 0.7;
+      }
+      .bingo-cell.bingo-animal {
+        cursor: default;
+        padding: 0;
+      }
+      .bingo-cell.bingo-animal > div {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        opacity: 0.25;
+      }
+      .bingo-cell.bingo-free {
+        background: #F7B338;
+        border-color: #F7B338;
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #301C1D;
+      }
+      .bingo-cell.bingo-free.bingo-completed {
+        background: #7FA497;
+        border-color: #7FA497;
+        color: #FFFEE7;
+      }
+      .bingo-cell .bingo-text {
+        max-height: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .bingo-cell .bingo-tag {
+        font-size: 7px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.6;
+        margin-top: 2px;
+      }
+
+      /* Bingo line flash animation */
+      @keyframes bingoFlash {
+        0%   { transform: scale(1); }
+        25%  { transform: scale(1.08); background: #F7B338; }
+        50%  { transform: scale(1); }
+        75%  { transform: scale(1.05); }
+        100% { transform: scale(1); }
+      }
+      .bingo-line-flash {
+        animation: bingoFlash 0.6s ease-in-out;
+      }
+
+      /* ── TODAY TILES ── */
+      .today-content {
+        padding: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: flex-start;
+        background: #301C1D;
+        min-height: 80vh;
+      }
+      .today-tile {
+        background: #FFFEE7;
+        border: 2px solid #301C1D;
+        width: 340px;
+        max-width: calc(100vw - 24px);
+        flex-shrink: 0;
+      }
+      .today-tile-header {
+        padding: 10px 14px;
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .today-tile-body {
+        padding: 8px 12px 12px;
+      }
+      .today-item-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(48,28,29,0.06);
+        font-family: 'Space Mono', monospace;
+        font-size: 12px;
+        color: #301C1D;
+      }
+      .today-item-row.today-done .today-item-text {
+        text-decoration: line-through;
+        opacity: 0.45;
+      }
+      .today-item-text {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .today-add-input {
+        width: 100%;
+        background: transparent;
+        border: none;
+        border-top: 1.5px solid rgba(48,28,29,0.12);
+        color: #301C1D;
+        font-family: 'Space Mono', monospace;
+        font-size: 12px;
+        padding: 10px 0 6px;
+        outline: none;
+        margin-top: 4px;
+      }
+      .today-add-input::placeholder { color: rgba(48,28,29,0.3); }
+
+      /* ── BILLABLE MINI TABLE ── */
+      .today-bill-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Space Mono', monospace;
+        font-size: 11px;
+        color: #301C1D;
+      }
+      .today-bill-table th {
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(48,28,29,0.5);
+        text-align: left;
+        padding: 4px 6px;
+        border-bottom: 1.5px solid rgba(48,28,29,0.12);
+      }
+      .today-bill-table td {
+        padding: 5px 6px;
+        border-bottom: 1px solid rgba(48,28,29,0.06);
+        vertical-align: middle;
+      }
+      .today-bill-table tfoot td {
+        font-weight: bold;
+        border-top: 1.5px solid rgba(48,28,29,0.15);
+        border-bottom: none;
+      }
+
+      /* ── DAILY FL TILE ── */
+      .dfl-item-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(48,28,29,0.06);
+      }
+      .dfl-item-text {
+        flex: 1;
+        font-family: 'Space Mono', monospace;
+        font-size: 12px;
+        color: #301C1D;
+      }
+      .dfl-item-row.dfl-done .dfl-item-text {
+        text-decoration: line-through;
+        opacity: 0.45;
+      }
+      .dfl-mins-badge {
+        font-family: 'Space Mono', monospace;
+        font-size: 10px;
+        color: #7FA497;
+        letter-spacing: 0.06em;
+      }
+      .dfl-edit-btn, .dfl-del-btn {
+        background: none;
+        border: none;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 2px 4px;
+        color: rgba(48,28,29,0.25);
+        transition: color 0.1s;
+      }
+      .dfl-edit-btn:hover { color: #5b8bd4; }
+      .dfl-del-btn:hover { color: #E94D32; }
+
+      /* ── CONFETTI ── */
+      @keyframes confettiBurst {
+        0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      }
+
+      /* ── RESPONSIVE ── */
+      @media (max-width: 600px) {
+        .bingo-grid { max-width: 100%; }
+        .bingo-cell { font-size: 8px; }
+        .bingo-cell .bingo-tag { font-size: 6px; }
+        .today-tile { width: 100%; }
+      }
+    </style>
+
+    <div class="today-content" id="today-content">
+      <!-- Rendered dynamically by renderTodayTab() -->
+    </div>
+
+    <!-- Daily FL completion prompt -->
+    <div id="dfl-completion-modal" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(48,28,29,0.75);align-items:center;justify-content:center;">
+      <div style="background:#FFFEE7;border:2px solid #301C1D;padding:28px;max-width:400px;width:90vw;box-sizing:border-box;">
+        <div id="dfl-comp-title" style="font-family:'Archivo Black',sans-serif;font-size:18px;color:#301C1D;margin-bottom:20px;line-height:1.3;"></div>
+        <div style="margin-bottom:16px;">
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.5);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px;">How long?</div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <input id="dfl-comp-mins" type="number" min="1" max="999" placeholder="mins"
+              style="background:#FFFEE7;border:2px solid #301C1D;color:#301C1D;font-family:'Space Mono',monospace;font-size:18px;padding:9px 12px;width:90px;outline:none;text-align:center;"
+              onkeydown="if(event.key==='Enter')dflConfirmComplete()"/>
+            <span style="font-family:'Space Mono',monospace;font-size:12px;color:rgba(48,28,29,0.4);">minutes</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="dflCancelComplete()" style="background:#FFFEE7;border:2px solid rgba(48,28,29,0.35);color:rgba(48,28,29,0.5);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:11px 18px;cursor:pointer;">Cancel</button>
+          <button onclick="dflConfirmComplete()" style="background:#301C1D;border:2px solid #301C1D;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:11px 24px;cursor:pointer;flex:1;">Save ✓</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ══ WEEKLY SUMMARY ══ -->
   <!-- ══ NOTCHES ══ -->
@@ -3319,6 +3586,7 @@
     target.classList.add('visible');
     if (btn) btn.classList.add('active');
     if (id === 'archive' && window.twRenderArchive) window.twRenderArchive();
+    if (id === 'today')      { try { renderTodayTab(); } catch(e) { console.error(e); } }
     if (id === 'sortedlist') { try { renderSortedList(); } catch(e) {} }
     if (id === 'pastlogs')   { try { renderPastLogs();   } catch(e) { console.error(e); } }
     if (id === 'highlights') { try { renderHighlights(); } catch(e) { console.error(e); } }
@@ -5670,6 +5938,848 @@
   window.continueNextRound = continueNextRound;
   window.toggleSortFilter  = function(){};
   window.clearSortFilters  = function(){};
+
+  // ══════════════════════════════════════════════════════════════════
+  // ══ TODAY TAB MODULE ══
+  // Daily dashboard: 5×5 bingo card, completed-today tile,
+  // must/ideally today tiles, billable summary, daily FL activities.
+  // Bingo grid populates from sort buckets in priority order.
+  // Daily FL items reset at 2am boundary (todayStr()).
+  // ══════════════════════════════════════════════════════════════════
+
+  const TODAY_BINGO_KEY = 'today_bingo_v1';
+  const DAILY_FL_KEY    = 'today_daily_fl_v1';
+
+  // Default daily FL activities
+  const DEFAULT_DAILY_FL = [
+    { id: 1, text: 'Go through Asana' },
+    { id: 2, text: 'Call Rose' },
+    { id: 3, text: "Create Today's To-Do List" },
+  ];
+
+  // Priority order for bingo population
+  const BINGO_TIMING_PRIORITY = ['must', 'ideally', 'this-week', 'soon', 'whenever'];
+
+  // ── Confetti celebration system ──
+  function launchConfetti(intensity) {
+    const canvas = document.getElementById('confettiCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    canvas.style.zIndex = '9999';
+
+    const colors = ['#E94D32', '#F7B338', '#7FA497', '#5b8bd4', '#FFFEE7', '#301C1D'];
+    const count = intensity === 'blackout' ? 300 : intensity === 'line' ? 120 : 80;
+    const particles = [];
+
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height * -1,
+        w: Math.random() * 10 + 4,
+        h: Math.random() * 6 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 6,
+        vy: Math.random() * 4 + 2,
+        spin: (Math.random() - 0.5) * 0.2,
+        angle: Math.random() * Math.PI * 2,
+        opacity: 1,
+        decay: 0.003 + Math.random() * 0.003,
+      });
+    }
+
+    let frame = 0;
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      particles.forEach(p => {
+        if (p.opacity <= 0) return;
+        alive = true;
+        p.x += p.vx;
+        p.vy += 0.1; // gravity
+        p.y += p.vy;
+        p.angle += p.spin;
+        p.opacity -= p.decay;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.angle);
+        ctx.globalAlpha = Math.max(0, p.opacity);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      frame++;
+      if (alive && frame < 300) {
+        requestAnimationFrame(animate);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  window.launchConfetti = launchConfetti;
+
+  // ── Bingo: localStorage helpers ──
+  function loadBingoState() {
+    try { return JSON.parse(localStorage.getItem(TODAY_BINGO_KEY)) || null; } catch { return null; }
+  }
+  function saveBingoState(state) {
+    try { localStorage.setItem(TODAY_BINGO_KEY, JSON.stringify(state)); } catch {}
+    if (typeof gistMarkDirty === 'function') gistMarkDirty();
+  }
+
+  // ── Daily FL: localStorage helpers ──
+  function loadDailyFL() {
+    try {
+      const data = JSON.parse(localStorage.getItem(DAILY_FL_KEY));
+      if (data && Array.isArray(data.items)) return data;
+      return null;
+    } catch { return null; }
+  }
+  function saveDailyFL(data) {
+    try { localStorage.setItem(DAILY_FL_KEY, JSON.stringify(data)); } catch {}
+    if (typeof gistMarkDirty === 'function') gistMarkDirty();
+  }
+
+  // ── Extract animal images from homepage tiles ──
+  function getAnimalImages() {
+    const imgs = [];
+    const grid = document.getElementById('modeSelect');
+    if (!grid) return imgs;
+    grid.querySelectorAll('button > div').forEach(div => {
+      const bg = div.style.backgroundImage;
+      if (bg && bg.includes('data:image')) {
+        imgs.push(bg.replace(/^url\(['"]?/, '').replace(/['"]?\)$/, ''));
+      }
+    });
+    return imgs;
+  }
+
+  // ── Shuffle helper ──
+  function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  /**
+   * Generate a fresh 5x5 bingo grid for today.
+   * Pulls items from sort buckets in priority order.
+   * Center cell (index 12) = "Drink Water" free space.
+   * Empty slots filled with animal illustrations.
+   */
+  function generateBingoGrid() {
+    const items = loadSortItems().filter(it => !it.listCompleted && it.timing);
+    const animalImgs = getAnimalImages();
+
+    // Collect items by priority
+    let candidates = [];
+    for (const timing of BINGO_TIMING_PRIORITY) {
+      const bucket = items.filter(it => it.timing === timing);
+      candidates.push(...shuffleArray(bucket));
+    }
+
+    // Take up to 24 (center is free space)
+    candidates = candidates.slice(0, 24);
+
+    // Build cells: items + animals for remaining
+    const itemCells = candidates.map(it => ({
+      type: 'item',
+      itemId: it.id,
+      text: it.text,
+      timing: it.timing,
+      meta: it.meta,
+      completed: false,
+    }));
+
+    const animalCount = 24 - itemCells.length;
+    const animalCells = [];
+    for (let i = 0; i < animalCount; i++) {
+      const imgUrl = animalImgs.length > 0 ? animalImgs[i % animalImgs.length] : null;
+      animalCells.push({ type: 'animal', imgUrl, completed: false });
+    }
+
+    // Shuffle all non-center cells together
+    const shuffled = shuffleArray([...itemCells, ...animalCells]);
+
+    const finalGrid = [];
+    let si = 0;
+    for (let i = 0; i < 25; i++) {
+      if (i === 12) {
+        finalGrid.push({ type: 'free', text: '💧 Drink Water', completed: false });
+      } else {
+        finalGrid.push(shuffled[si++]);
+      }
+    }
+
+    const state = {
+      date: todayStr(),
+      grid: finalGrid,
+      claimedLines: [],
+    };
+    saveBingoState(state);
+    return state;
+  }
+
+  // ── Bingo line definitions (rows, cols, diagonals) ──
+  const BINGO_LINES = [
+    [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
+    [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
+    [0,6,12,18,24], [4,8,12,16,20],
+  ];
+
+  /**
+   * Check for newly completed bingo lines and trigger celebrations.
+   */
+  function checkBingoLines(state) {
+    const { grid, claimedLines } = state;
+    let newLines = [];
+
+    BINGO_LINES.forEach((line, lineIdx) => {
+      if (claimedLines.includes(lineIdx)) return;
+      const allDone = line.every(i => grid[i].completed || grid[i].type === 'animal');
+      if (allDone) {
+        // Only count if at least one non-animal cell exists in this line
+        const hasReal = line.some(i => grid[i].type !== 'animal');
+        if (hasReal) newLines.push({ lineIdx, cells: line });
+      }
+    });
+
+    if (newLines.length === 0) return false;
+
+    newLines.forEach(nl => state.claimedLines.push(nl.lineIdx));
+    saveBingoState(state);
+
+    // Check for blackout: all non-animal cells completed
+    const isBlackout = grid.every(c => c.type === 'animal' || c.completed);
+
+    if (isBlackout) {
+      setTimeout(() => {
+        document.querySelectorAll('.bingo-cell').forEach(cell => cell.classList.add('bingo-line-flash'));
+        launchConfetti('blackout');
+        setTimeout(() => launchConfetti('blackout'), 400);
+        setTimeout(() => launchConfetti('blackout'), 800);
+        setTimeout(() => launchConfetti('blackout'), 1200);
+        setTimeout(() => launchConfetti('blackout'), 1600);
+        setTimeout(() => showBlackoutModal(), 500);
+      }, 100);
+    } else {
+      newLines.forEach((nl, i) => {
+        setTimeout(() => {
+          nl.cells.forEach(cellIdx => {
+            const cellEl = document.querySelector('.bingo-cell[data-idx="' + cellIdx + '"]');
+            if (cellEl) cellEl.classList.add('bingo-line-flash');
+          });
+          launchConfetti('line');
+        }, i * 600);
+      });
+    }
+
+    return true;
+  }
+
+  function showBlackoutModal() {
+    let modal = document.getElementById('bingo-blackout-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'bingo-blackout-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(48,28,29,0.92);display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="text-align:center;padding:40px;">' +
+      '<div style="font-size:72px;margin-bottom:16px;">🎉🏆🎉</div>' +
+      '<div style="font-family:\'Archivo Black\',sans-serif;font-size:36px;color:#F7B338;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">BLACKOUT!</div>' +
+      '<div style="font-family:\'Space Mono\',monospace;font-size:14px;color:#FFFEE7;opacity:0.8;margin-bottom:24px;">You completed every single tile today.</div>' +
+      '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:rgba(255,254,231,0.5);margin-bottom:32px;">Absolute legend. Take a bow.</div>' +
+      '<button onclick="this.closest(\'#bingo-blackout-modal\').remove()" style="background:#F7B338;border:2px solid #F7B338;color:#301C1D;font-family:\'Archivo Black\',sans-serif;font-size:16px;text-transform:uppercase;letter-spacing:0.06em;padding:14px 36px;cursor:pointer;">🏆 I\'m amazing 🏆</button></div>';
+    document.body.appendChild(modal);
+  }
+
+  // ── Bingo cell tap handler ──
+  function bingoToggleCell(cellIdx) {
+    const state = loadBingoState();
+    if (!state || state.date !== todayStr()) return;
+    const cell = state.grid[cellIdx];
+    if (!cell || cell.type === 'animal') return;
+    if (cell.completed) return;
+
+    if (cell.type === 'free') {
+      cell.completed = true;
+      saveBingoState(state);
+      renderBingoCard();
+      checkBingoLines(state);
+      return;
+    }
+
+    if (cell.type === 'item') {
+      sortAllItems = loadSortItems();
+      const item = sortAllItems.find(it => it.id == cell.itemId);
+      if (!item) {
+        cell.completed = true;
+        saveBingoState(state);
+        renderBingoCard();
+        checkBingoLines(state);
+        return;
+      }
+
+      if (item.meta === 'fl') {
+        _bingoPendingCellIdx = cellIdx;
+        _slPendingItemId = item.id;
+        slShowCompletionPrompt(item);
+      } else {
+        item.listCompleted = true;
+        item.completedOn = item.completedOn || todayStr();
+        saveSortItems(sortAllItems);
+        ensureDailyLogEntry(todayStr());
+        cell.completed = true;
+        saveBingoState(state);
+        renderBingoCard();
+        renderTodayTiles();
+        checkBingoLines(state);
+      }
+    }
+  }
+  window.bingoToggleCell = bingoToggleCell;
+
+  let _bingoPendingCellIdx = null;
+
+  // Extend slConfirmComplete to also update bingo cell
+  const _origSlConfirmComplete = slConfirmComplete;
+  function _extendedSlConfirmComplete() {
+    _origSlConfirmComplete();
+    if (_bingoPendingCellIdx != null) {
+      const state = loadBingoState();
+      if (state && state.grid[_bingoPendingCellIdx]) {
+        state.grid[_bingoPendingCellIdx].completed = true;
+        saveBingoState(state);
+        renderBingoCard();
+        checkBingoLines(state);
+      }
+      _bingoPendingCellIdx = null;
+    }
+    if (document.getElementById('today') && document.getElementById('today').classList.contains('visible')) {
+      try { renderTodayTiles(); } catch(e) {}
+    }
+  }
+  window.slConfirmComplete = _extendedSlConfirmComplete;
+
+  const _origSlCancelComplete = slCancelComplete;
+  function _extendedSlCancelComplete() {
+    _bingoPendingCellIdx = null;
+    _origSlCancelComplete();
+  }
+  window.slCancelComplete = _extendedSlCancelComplete;
+
+  // ── Render the 5x5 bingo card ──
+  function renderBingoCard() {
+    const container = document.getElementById('bingo-card-container');
+    if (!container) return;
+
+    let state = loadBingoState();
+    if (!state || state.date !== todayStr()) {
+      state = generateBingoGrid();
+    }
+
+    // Cross-reference with actual item completion status
+    const items = loadSortItems();
+    state.grid.forEach(cell => {
+      if (cell.type === 'item' && !cell.completed) {
+        const item = items.find(it => it.id == cell.itemId);
+        if (item && item.listCompleted) cell.completed = true;
+      }
+    });
+    saveBingoState(state);
+
+    const grid = document.createElement('div');
+    grid.className = 'bingo-grid';
+
+    state.grid.forEach((cell, idx) => {
+      const el = document.createElement('div');
+      el.className = 'bingo-cell';
+      el.dataset.idx = idx;
+
+      if (cell.type === 'free') {
+        el.classList.add('bingo-free');
+        if (cell.completed) el.classList.add('bingo-completed');
+        el.innerHTML = '<span class="bingo-text">' + cell.text + '</span>';
+        el.onclick = () => bingoToggleCell(idx);
+      } else if (cell.type === 'animal') {
+        el.classList.add('bingo-animal');
+        if (cell.imgUrl) {
+          const inner = document.createElement('div');
+          inner.style.backgroundImage = "url('" + cell.imgUrl + "')";
+          el.appendChild(inner);
+        }
+      } else {
+        if (cell.completed) el.classList.add('bingo-completed');
+        const timingColors = { must: '#E94D32', ideally: '#F7B338', 'this-week': '#5b8bd4', soon: '#7FA497', whenever: 'rgba(48,28,29,0.3)' };
+        const tagColor = timingColors[cell.timing] || 'rgba(48,28,29,0.3)';
+        const tagLabel = { must: 'must', ideally: 'ideally', 'this-week': 'week', soon: 'soon', whenever: '~' }[cell.timing] || '';
+        const displayText = (cell.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
+        const truncated = displayText.length > 40 ? displayText.slice(0, 37) + '…' : displayText;
+        el.innerHTML = '<span class="bingo-text">' + truncated + '</span>' +
+          '<span class="bingo-tag" style="color:' + (cell.completed ? 'rgba(255,254,231,0.6)' : tagColor) + '">' + tagLabel + '</span>';
+        el.onclick = () => bingoToggleCell(idx);
+      }
+
+      grid.appendChild(el);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(grid);
+
+    const completedCount = state.grid.filter(c => c.completed).length;
+    const itemCount = state.grid.filter(c => c.type !== 'animal').length;
+    const lineCount = state.claimedLines ? state.claimedLines.length : 0;
+    const progEl = document.getElementById('bingo-progress');
+    if (progEl) progEl.textContent = completedCount + '/' + itemCount + ' done · ' + lineCount + ' line' + (lineCount !== 1 ? 's' : '');
+  }
+
+  // ── Render Completed Today tile ──
+  function renderCompletedTodayTile() {
+    const container = document.getElementById('today-completed-tile');
+    if (!container) return;
+    const items = loadSortItems().filter(it => it.listCompleted && it.completedOn);
+    const today = todayStr();
+    const todayItems = items.filter(it => {
+      let d = it.completedOn;
+      if (d && d.includes('/')) {
+        const parts = d.split('/');
+        if (parts.length === 3) d = '20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+      }
+      return d === today;
+    });
+
+    const body = container.querySelector('.today-tile-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    if (todayItems.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.textContent = 'Nothing completed yet today';
+      body.appendChild(empty);
+    } else {
+      todayItems.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'today-item-row today-done';
+        const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
+        const check = document.createElement('span');
+        check.style.cssText = 'color:#7FA497;font-size:14px;';
+        check.textContent = '✓';
+        row.appendChild(check);
+        const txt = document.createElement('span');
+        txt.className = 'today-item-text';
+        txt.textContent = displayText;
+        row.appendChild(txt);
+        if (item.completedMins) {
+          const badge = document.createElement('span');
+          badge.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:#7FA497;";
+          badge.textContent = item.completedMins + 'm';
+          row.appendChild(badge);
+        }
+        body.appendChild(row);
+      });
+    }
+
+    const inp = document.createElement('input');
+    inp.className = 'today-add-input';
+    inp.placeholder = '+ add completed task…';
+    inp.onkeydown = (e) => {
+      if (e.key === 'Enter' && inp.value.trim()) {
+        addCompletedTodayItem(inp.value.trim());
+        inp.value = '';
+      }
+    };
+    body.appendChild(inp);
+
+    const countEl = container.querySelector('.today-tile-count');
+    if (countEl) countEl.textContent = todayItems.length;
+  }
+
+  function addCompletedTodayItem(text) {
+    sortAllItems = loadSortItems();
+    sortAllItems.push({
+      id: Date.now() + Math.random(),
+      text: text,
+      listCompleted: true,
+      completedOn: todayStr(),
+      length: null, category: null, subcategory: null, meta: null, timing: null,
+    });
+    saveSortItems(sortAllItems);
+    ensureDailyLogEntry(todayStr());
+    renderCompletedTodayTile();
+  }
+  window.addCompletedTodayItem = addCompletedTodayItem;
+
+  // ── Render Must Today tile ──
+  function renderMustTodayTile() {
+    const container = document.getElementById('today-must-tile');
+    if (!container) return;
+    const items = loadSortItems().filter(it => it.timing === 'must' && !it.listCompleted);
+    const body = container.querySelector('.today-tile-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.textContent = 'No must-do items';
+      body.appendChild(empty);
+    } else {
+      items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'today-item-row';
+        const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = false;
+        cb.style.flexShrink = '0';
+        cb.addEventListener('change', () => {
+          slToggleItem(item.id, cb.checked);
+          setTimeout(() => { renderTodayTiles(); renderBingoCard(); }, 150);
+        });
+        row.appendChild(cb);
+        const txt = document.createElement('span');
+        txt.className = 'today-item-text';
+        txt.textContent = displayText;
+        row.appendChild(txt);
+        body.appendChild(row);
+      });
+    }
+    const countEl = container.querySelector('.today-tile-count');
+    if (countEl) countEl.textContent = items.length;
+  }
+
+  // ── Render Ideally Today tile ──
+  function renderIdeallyTodayTile() {
+    const container = document.getElementById('today-ideally-tile');
+    if (!container) return;
+    const items = loadSortItems().filter(it => it.timing === 'ideally' && !it.listCompleted);
+    const body = container.querySelector('.today-tile-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.textContent = 'No ideally-today items';
+      body.appendChild(empty);
+    } else {
+      items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'today-item-row';
+        const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = false;
+        cb.style.flexShrink = '0';
+        cb.addEventListener('change', () => {
+          slToggleItem(item.id, cb.checked);
+          setTimeout(() => { renderTodayTiles(); renderBingoCard(); }, 150);
+        });
+        row.appendChild(cb);
+        const txt = document.createElement('span');
+        txt.className = 'today-item-text';
+        txt.textContent = displayText;
+        row.appendChild(txt);
+        body.appendChild(row);
+      });
+    }
+    const countEl = container.querySelector('.today-tile-count');
+    if (countEl) countEl.textContent = items.length;
+  }
+
+  // ── Render Billable Summary tile ──
+  function renderBillableSummaryTile() {
+    const container = document.getElementById('today-billable-tile');
+    if (!container) return;
+    const body = container.querySelector('.today-tile-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const today = todayStr();
+    const allRows = collectBillableRows();
+    const todayRows = allRows.filter(r => r.date === today);
+
+    if (todayRows.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:8px 0;";
+      empty.textContent = 'No billable time logged today';
+      body.appendChild(empty);
+      return;
+    }
+
+    const totalMins = todayRows.reduce((s, r) => s + Number(r.mins), 0);
+    const totalHrs = (totalMins / 60).toFixed(1);
+
+    const table = document.createElement('table');
+    table.className = 'today-bill-table';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>Client</th><th>Description</th><th style="text-align:right">Min</th><th style="text-align:right">Hrs</th><th></th></tr>';
+    table.appendChild(thead);
+
+    const tfoot = document.createElement('tfoot');
+    tfoot.innerHTML = '<tr><td colspan="2" style="font-weight:bold">Total</td><td style="text-align:right;font-weight:bold">' + totalMins + '</td><td style="text-align:right;font-weight:bold">' + totalHrs + '</td><td></td></tr>';
+    table.appendChild(tfoot);
+
+    const tbody = document.createElement('tbody');
+    window._todayBillableRowMap = {};
+    todayRows.forEach(r => {
+      const editKey = r._origKey || (r.date + '|' + r.client + '|' + r.project + '|' + r.desc);
+      window._todayBillableRowMap[editKey] = r;
+      const tr = document.createElement('tr');
+      const cells = [
+        { val: r.client, extra: '' },
+        { val: r.desc, extra: '' },
+        { val: r.mins, extra: 'text-align:right' },
+        { val: (Number(r.mins)/60).toFixed(1), extra: 'text-align:right' },
+      ];
+      cells.forEach(c => {
+        const td = document.createElement('td');
+        if (c.extra) td.style.cssText = c.extra;
+        td.textContent = c.val;
+        tr.appendChild(td);
+      });
+      const editTd = document.createElement('td');
+      editTd.style.cssText = 'text-align:center;width:28px;';
+      const editBtn = document.createElement('button');
+      editBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.3);font-size:13px;cursor:pointer;padding:2px;';
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit';
+      editBtn.onclick = () => openBillableEditModal(r, editKey);
+      editTd.appendChild(editBtn);
+      tr.appendChild(editTd);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    body.appendChild(table);
+  }
+
+  // ── Daily FL Activities ──
+  let _dflPendingItemId = null;
+
+  function getDailyFLData() {
+    let data = loadDailyFL();
+    if (!data) {
+      data = { items: DEFAULT_DAILY_FL.map(d => ({ ...d, completedToday: false, completedMins: null, lastResetDate: todayStr() })) };
+      saveDailyFL(data);
+    }
+    const today = todayStr();
+    let changed = false;
+    data.items.forEach(item => {
+      if (item.lastResetDate !== today) {
+        item.completedToday = false;
+        item.completedMins = null;
+        item.lastResetDate = today;
+        changed = true;
+      }
+    });
+    if (changed) saveDailyFL(data);
+    return data;
+  }
+
+  function renderDailyFLTile() {
+    const container = document.getElementById('today-dailyfl-tile');
+    if (!container) return;
+    const body = container.querySelector('.today-tile-body');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const data = getDailyFLData();
+
+    data.items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'dfl-item-row' + (item.completedToday ? ' dfl-done' : '');
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!item.completedToday;
+      cb.style.flexShrink = '0';
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          _dflPendingItemId = item.id;
+          const titleEl = document.getElementById('dfl-comp-title');
+          if (titleEl) titleEl.textContent = item.text;
+          const minsEl = document.getElementById('dfl-comp-mins');
+          if (minsEl) minsEl.value = '';
+          const modal = document.getElementById('dfl-completion-modal');
+          if (modal) { modal.style.display = 'flex'; setTimeout(() => minsEl && minsEl.focus(), 50); }
+        } else {
+          const freshData = getDailyFLData();
+          const fi = freshData.items.find(i => i.id === item.id);
+          if (fi) { fi.completedToday = false; fi.completedMins = null; }
+          saveDailyFL(freshData);
+          renderDailyFLTile();
+        }
+      });
+
+      const txt = document.createElement('span');
+      txt.className = 'dfl-item-text';
+      txt.textContent = item.text;
+
+      row.appendChild(cb);
+      row.appendChild(txt);
+
+      if (item.completedToday && item.completedMins) {
+        const badge = document.createElement('span');
+        badge.className = 'dfl-mins-badge';
+        badge.textContent = item.completedMins + 'm';
+        row.appendChild(badge);
+      }
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'dfl-edit-btn';
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        const newText = prompt('Edit activity:', item.text);
+        if (newText && newText.trim()) {
+          const freshData = getDailyFLData();
+          const fi = freshData.items.find(i => i.id === item.id);
+          if (fi) fi.text = newText.trim();
+          saveDailyFL(freshData);
+          renderDailyFLTile();
+        }
+      };
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'dfl-del-btn';
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove';
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm('Remove "' + item.text + '" from daily activities?')) {
+          const freshData = getDailyFLData();
+          freshData.items = freshData.items.filter(i => i.id !== item.id);
+          saveDailyFL(freshData);
+          renderDailyFLTile();
+        }
+      };
+
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
+      body.appendChild(row);
+    });
+
+    const inp = document.createElement('input');
+    inp.className = 'today-add-input';
+    inp.placeholder = '+ add daily activity…';
+    inp.onkeydown = (e) => {
+      if (e.key === 'Enter' && inp.value.trim()) {
+        const freshData = getDailyFLData();
+        freshData.items.push({
+          id: Date.now() + Math.random(),
+          text: inp.value.trim(),
+          completedToday: false,
+          completedMins: null,
+          lastResetDate: todayStr(),
+        });
+        saveDailyFL(freshData);
+        inp.value = '';
+        renderDailyFLTile();
+      }
+    };
+    body.appendChild(inp);
+
+    const countEl = container.querySelector('.today-tile-count');
+    if (countEl) {
+      const done = data.items.filter(i => i.completedToday).length;
+      countEl.textContent = done + '/' + data.items.length;
+    }
+  }
+
+  function dflConfirmComplete() {
+    const data = getDailyFLData();
+    const item = data.items.find(i => i.id === _dflPendingItemId);
+    if (!item) { document.getElementById('dfl-completion-modal').style.display = 'none'; return; }
+    const mins = parseInt(document.getElementById('dfl-comp-mins').value) || null;
+    item.completedToday = true;
+    item.completedMins = mins;
+    item.lastResetDate = todayStr();
+    saveDailyFL(data);
+
+    if (mins) {
+      const today = new Date();
+      const fmt = d => (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(-2);
+      const fakeItem = { text: item.text, meta: 'fl', subcategory: null };
+      slAddToBillable(fakeItem, mins, fmt(today));
+    }
+
+    ensureDailyLogEntry(todayStr());
+    _dflPendingItemId = null;
+    document.getElementById('dfl-completion-modal').style.display = 'none';
+    renderDailyFLTile();
+    renderBillableSummaryTile();
+  }
+
+  function dflCancelComplete() {
+    _dflPendingItemId = null;
+    document.getElementById('dfl-completion-modal').style.display = 'none';
+    renderDailyFLTile();
+  }
+
+  window.dflConfirmComplete = dflConfirmComplete;
+  window.dflCancelComplete = dflCancelComplete;
+
+  function renderTodayTiles() {
+    renderCompletedTodayTile();
+    renderMustTodayTile();
+    renderIdeallyTodayTile();
+    renderBillableSummaryTile();
+    renderDailyFLTile();
+  }
+
+  /** Master render function for Today tab */
+  function renderTodayTab() {
+    const content = document.getElementById('today-content');
+    if (!content) return;
+
+    content.innerHTML = '';
+
+    // Bingo section
+    const bingoWrap = document.createElement('div');
+    bingoWrap.style.cssText = 'width:100%;max-width:560px;margin:0 auto;';
+    bingoWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 0;">' +
+      '<div style="font-family:\'Archivo Black\',sans-serif;font-size:16px;color:#FFFEE7;text-transform:uppercase;letter-spacing:0.04em;">Today\'s Bingo</div>' +
+      '<div style="display:flex;align-items:center;gap:12px;">' +
+      '<span id="bingo-progress" style="font-family:\'Space Mono\',monospace;font-size:10px;color:rgba(255,254,231,0.5);letter-spacing:0.06em;"></span>' +
+      '<button onclick="if(confirm(\'Regenerate bingo card? Progress will be lost.\')){localStorage.removeItem(\'' + TODAY_BINGO_KEY + '\');renderBingoCard();}" style="background:none;border:1px solid rgba(255,254,231,0.2);color:rgba(255,254,231,0.35);font-family:\'Space Mono\',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:4px 8px;cursor:pointer;">↻ New</button>' +
+      '</div></div>' +
+      '<div id="bingo-card-container"></div>';
+    content.appendChild(bingoWrap);
+
+    // Tiles wrapper
+    const tilesWrap = document.createElement('div');
+    tilesWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;width:100%;padding:0 4px;';
+
+    // Must Today
+    tilesWrap.innerHTML += '<div class="today-tile" id="today-must-tile"><div class="today-tile-header" style="background:#E94D32;color:#FFFEE7;"><span>Must Today</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;"></span></div><div class="today-tile-body"></div></div>';
+
+    // Ideally Today
+    tilesWrap.innerHTML += '<div class="today-tile" id="today-ideally-tile"><div class="today-tile-header" style="background:#F7B338;color:#301C1D;"><span>Ideally Today</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;"></span></div><div class="today-tile-body"></div></div>';
+
+    // Daily FL
+    tilesWrap.innerHTML += '<div class="today-tile" id="today-dailyfl-tile"><div class="today-tile-header" style="background:#122860;color:#FFFEE7;"><span>Daily FL</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;"></span></div><div class="today-tile-body"></div></div>';
+
+    // Completed Today
+    tilesWrap.innerHTML += '<div class="today-tile" id="today-completed-tile"><div class="today-tile-header" style="background:#7FA497;color:#FFFEE7;"><span>Completed Today</span><span class="today-tile-count" style="font-family:\'Space Mono\',monospace;font-size:11px;opacity:0.8;">0</span></div><div class="today-tile-body"></div></div>';
+
+    // Billable Hours
+    tilesWrap.innerHTML += '<div class="today-tile" id="today-billable-tile" style="width:480px;"><div class="today-tile-header" style="background:#5b8bd4;color:#FFFEE7;"><span>Billable Hours</span></div><div class="today-tile-body"></div></div>';
+
+    content.appendChild(tilesWrap);
+
+    renderBingoCard();
+    renderTodayTiles();
+  }
+  window.renderTodayTab = renderTodayTab;
+
+  // ══════════════════════════════════════════════════════════════════
 
   // ── ANYMALS SLIDING PUZZLE: 3×3, 7 tiles + 2 empty spaces ──
   try {
@@ -9944,6 +11054,8 @@ const SYNC_STATIC_KEYS = [
   'work_name_v1',
   'ideas_items_v1',
   'ideas_categories_v1',
+  'today_bingo_v1',
+  'today_daily_fl_v1',
 ];
 const SYNC_KEY_PREFIXES = ['journal_daily_', 'journal_week_', 'journal_list_'];
 
