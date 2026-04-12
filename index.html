@@ -2423,25 +2423,18 @@
 
       /* ── TODAY LAYOUT ── */
       .today-content {
-        padding: 8px;
+        padding: 12px;
         background: #301C1D;
         min-height: 80vh;
       }
-      .today-tiles-row {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-        flex-wrap: wrap;
-        margin-bottom: 8px;
-        max-width: 900px;
+      .today-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
       }
-      .today-col {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        width: calc(50% - 4px);
-        min-width: 280px;
-        flex-shrink: 0;
+      .today-grid > * {
+        min-width: 0;
       }
       /* Completed / Daily FL tiles reuse sl-bucket-card styling */
       .today-tile {
@@ -2491,33 +2484,10 @@
       }
       .today-add-input::placeholder { color: rgba(48,28,29,0.3); }
 
-      /* ── BILLABLE TILE — visually distinct ── */
+      /* ── BILLABLE TILE ── */
       .today-billable-wrap {
-        background: #301C1D;
-        border: 2px solid rgba(255,254,231,0.15);
         padding: 0;
         width: 100%;
-      }
-      .today-billable-header {
-        font-family: 'Archivo Black', sans-serif;
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #FFFEE7;
-        padding: 12px 16px 10px;
-        border-bottom: 1px solid rgba(255,254,231,0.1);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .today-billable-header .bill-accent {
-        font-family: 'Space Mono', monospace;
-        font-size: 10px;
-        color: #5b8bd4;
-        letter-spacing: 0.1em;
-      }
-      .today-billable-body {
-        padding: 8px 0;
       }
 
       /* ── BILLABLE MINI TABLE ── */
@@ -2527,26 +2497,26 @@
         border-collapse: collapse;
         font-family: 'Space Mono', monospace;
         font-size: 11px;
-        color: rgba(255,254,231,0.8);
+        color: #301C1D;
       }
       .today-bill-table th {
         font-size: 9px;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: rgba(255,254,231,0.35);
+        color: rgba(48,28,29,0.4);
         text-align: left;
         padding: 4px 6px;
-        border-bottom: 1px solid rgba(255,254,231,0.1);
+        border-bottom: 1px solid rgba(48,28,29,0.1);
       }
       .today-bill-table td {
         padding: 5px 6px;
-        border-bottom: 1px solid rgba(255,254,231,0.05);
+        border-bottom: 1px solid rgba(48,28,29,0.06);
         vertical-align: middle;
       }
       .today-bill-table tfoot td {
         font-weight: bold;
-        color: #5b8bd4;
-        border-top: 1px solid rgba(255,254,231,0.12);
+        color: #E94D32;
+        border-top: 1px solid rgba(48,28,29,0.12);
         border-bottom: none;
       }
 
@@ -2593,9 +2563,10 @@
       }
 
       /* ── RESPONSIVE ── */
-      @media (max-width: 700px) {
-        .today-col { width: 100%; min-width: 100%; }
-        .today-tiles-row { max-width: 100%; }
+      @media (max-width: 600px) {
+        .today-grid {
+          grid-template-columns: 1fr;
+        }
       }
       @media (max-width: 600px) {
         .bingo-grid { max-width: 100%; }
@@ -6424,7 +6395,7 @@
     // Header in sorted-list style
     const hdr = document.createElement('div');
     hdr.className = 'sl-bucket-header';
-    hdr.innerHTML = '<span class="sl-hdr-text" style="background:#7FA497;color:#FFFEE7;">Completed Today</span>';
+    hdr.innerHTML = '<span class="sl-hdr-text">Completed Today</span>';
     const countSpan = document.createElement('span');
     countSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
     countSpan.textContent = todayItems.length + ' item' + (todayItems.length !== 1 ? 's' : '');
@@ -6521,10 +6492,8 @@
     if (!container) return;
     container.innerHTML = '';
 
-    // Header
-    const hdr = document.createElement('div');
-    hdr.className = 'today-billable-header';
-    hdr.innerHTML = '<span>Billable Hours</span>';
+    const card = document.createElement('div');
+    card.className = 'today-tile';
 
     const today = todayStr();
     const allRows = collectBillableRows();
@@ -6532,24 +6501,24 @@
     const totalMins = todayRows.reduce((s, r) => s + Number(r.mins), 0);
     const totalHrs = (totalMins / 60).toFixed(1);
 
+    // Header — matching yellow/red style
+    const hdr = document.createElement('div');
+    hdr.className = 'sl-bucket-header';
+    hdr.innerHTML = '<span class="sl-hdr-text">Billable Hours</span>';
     const accent = document.createElement('span');
-    accent.className = 'bill-accent';
+    accent.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
     accent.textContent = totalHrs + ' hrs';
-    accent.style.marginLeft = 'auto';
     hdr.appendChild(accent);
-    container.appendChild(hdr);
-
-    const body = document.createElement('div');
-    body.className = 'today-billable-body';
+    card.appendChild(hdr);
 
     if (todayRows.length === 0) {
       const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.25);padding:10px 16px;";
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
       empty.textContent = 'No billable time logged today';
-      body.appendChild(empty);
+      card.appendChild(empty);
     } else {
       const table = document.createElement('table');
-      table.className = 'today-bill-table';
+      table.className = 'today-bill-table today-bill-table-light';
 
       const thead = document.createElement('thead');
       thead.innerHTML = '<tr><th>Client</th><th>Description</th><th style="text-align:right">Min</th><th style="text-align:right">Hrs</th><th></th></tr>';
@@ -6580,20 +6549,20 @@
         const editTd = document.createElement('td');
         editTd.style.cssText = 'text-align:center;width:28px;';
         const editBtn = document.createElement('button');
-        editBtn.style.cssText = 'background:none;border:none;color:rgba(255,254,231,0.25);font-size:13px;cursor:pointer;padding:2px;transition:color 0.1s;';
+        editBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.25);font-size:13px;cursor:pointer;padding:2px;transition:color 0.1s;';
         editBtn.textContent = '✎';
         editBtn.title = 'Edit';
         editBtn.onmouseover = () => editBtn.style.color = '#5b8bd4';
-        editBtn.onmouseout = () => editBtn.style.color = 'rgba(255,254,231,0.25)';
+        editBtn.onmouseout = () => editBtn.style.color = 'rgba(48,28,29,0.25)';
         editBtn.onclick = () => openBillableEditModal(r, editKey);
         editTd.appendChild(editBtn);
         tr.appendChild(editTd);
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
-      body.appendChild(table);
+      card.appendChild(table);
     }
-    container.appendChild(body);
+    container.appendChild(card);
   }
 
   // ── Daily FL Activities ──
@@ -6633,7 +6602,7 @@
     // Header
     const hdr = document.createElement('div');
     hdr.className = 'sl-bucket-header';
-    hdr.innerHTML = '<span class="sl-hdr-text" style="background:#122860;color:#FFFEE7;">Daily FL</span>';
+    hdr.innerHTML = '<span class="sl-hdr-text">Daily FL</span>';
     const countSpan = document.createElement('span');
     countSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
     countSpan.textContent = doneCount + '/' + data.items.length;
@@ -6785,43 +6754,32 @@
 
     content.innerHTML = '';
 
-    // ── TWO COLUMNS OF TILES ──
-    const tilesRow = document.createElement('div');
-    tilesRow.className = 'today-tiles-row';
-
-    // Column 1: Must Today + Daily FL + Billable
-    const col1 = document.createElement('div');
-    col1.className = 'today-col';
+    // ── ALL TILES IN A 2-COLUMN GRID ──
+    const grid = document.createElement('div');
+    grid.className = 'today-grid';
 
     const mustWrap = document.createElement('div');
     mustWrap.id = 'today-must-wrap';
-    col1.appendChild(mustWrap);
+    grid.appendChild(mustWrap);
+
+    const ideallyWrap = document.createElement('div');
+    ideallyWrap.id = 'today-ideally-wrap';
+    grid.appendChild(ideallyWrap);
 
     const dflWrap = document.createElement('div');
     dflWrap.id = 'today-dailyfl-wrap';
-    col1.appendChild(dflWrap);
+    grid.appendChild(dflWrap);
+
+    const compWrap = document.createElement('div');
+    compWrap.id = 'today-completed-wrap';
+    grid.appendChild(compWrap);
 
     const billWrap = document.createElement('div');
     billWrap.id = 'today-billable-wrap';
     billWrap.className = 'today-billable-wrap';
-    col1.appendChild(billWrap);
+    grid.appendChild(billWrap);
 
-    tilesRow.appendChild(col1);
-
-    // Column 2: Ideally Today + Completed Today
-    const col2 = document.createElement('div');
-    col2.className = 'today-col';
-
-    const ideallyWrap = document.createElement('div');
-    ideallyWrap.id = 'today-ideally-wrap';
-    col2.appendChild(ideallyWrap);
-
-    const compWrap = document.createElement('div');
-    compWrap.id = 'today-completed-wrap';
-    col2.appendChild(compWrap);
-
-    tilesRow.appendChild(col2);
-    content.appendChild(tilesRow);
+    content.appendChild(grid);
 
     // ── BINGO BOARD (below tiles, directly on dark background) ──
     const bingoSection = document.createElement('div');
