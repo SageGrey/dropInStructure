@@ -11167,9 +11167,10 @@ async function gistPull() {
   const result = await res.json();
   const file = result.files[GIST_FILENAME];
   if (!file) throw new Error(`File "${GIST_FILENAME}" not found in Gist`);
-  // For large files GitHub returns a raw_url instead of inline content
+  // GitHub truncates inline content for large files (~1MB).
+  // Always use raw_url when the file is truncated.
   let content = file.content;
-  if (!content && file.raw_url) {
+  if ((!content || file.truncated) && file.raw_url) {
     const raw = await fetch(file.raw_url);
     content = await raw.text();
   }
