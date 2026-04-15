@@ -11274,6 +11274,7 @@ async function gistPullWithUI() {
     // Reload UI from fresh storage
     try { if (window.renderSortedList) renderSortedList(); } catch {}
     try { if (window.renderPastLogs)   renderPastLogs(); } catch {}
+    try { if (window.renderBillableCSV) renderBillableCSV(); } catch {}
   } catch(e) {
     gistUpdateNavBtn('error');
     syncLog(`Pull failed: ${e.message}`);
