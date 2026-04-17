@@ -2000,7 +2000,7 @@
 
 <nav>
   <button class="active" onclick="showSection('routines', this)">Routines</button>
-  <button onclick="showSection('today', this)" id="today-tab">Today</button>
+  <button onclick="showSection('today', this)" id="today-tab">Bingo</button>
   <button onclick="showSection('notches', this)" style="display:none">Notches</button>
   <button onclick="showSection('theoryweek', this)">Rough Hous.</button>
   <button onclick="showSection('archive', this)" style="display:none">Week Archive</button>
@@ -2427,134 +2427,6 @@
         background: #301C1D;
         min-height: 80vh;
       }
-      .today-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-bottom: 10px;
-      }
-      .today-grid > * {
-        min-width: 0;
-      }
-      /* Completed / Daily FL tiles reuse sl-bucket-card styling */
-      .today-tile {
-        background: #FFFEE7;
-        padding: 0;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-      .today-item-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 7px 16px;
-        border-bottom: 1px solid rgba(48,28,29,0.06);
-      }
-      .today-item-row:last-child { border-bottom: none; }
-      .today-item-row input[type=checkbox] {
-        margin-top: 2px;
-        flex-shrink: 0;
-        width: 14px; height: 14px;
-        accent-color: #7FA497;
-        cursor: pointer;
-      }
-      .today-item-row.today-done .today-item-text {
-        text-decoration: line-through;
-        color: rgba(48,28,29,0.35);
-      }
-      .today-item-text {
-        font-family: 'Space Mono', monospace;
-        font-size: 12px;
-        color: #301C1D;
-        line-height: 1.5;
-        flex: 1;
-        min-width: 0;
-      }
-      .today-add-input {
-        width: calc(100% - 32px);
-        background: transparent;
-        border: none;
-        border-top: 1.5px solid rgba(48,28,29,0.12);
-        color: #301C1D;
-        font-family: 'Space Mono', monospace;
-        font-size: 12px;
-        padding: 10px 16px 8px;
-        outline: none;
-      }
-      .today-add-input::placeholder { color: rgba(48,28,29,0.3); }
-
-      /* ── BILLABLE TILE ── */
-      .today-billable-wrap {
-        padding: 0;
-        width: 100%;
-      }
-
-      /* ── BILLABLE MINI TABLE ── */
-      .today-bill-table {
-        width: calc(100% - 24px);
-        margin: 0 12px 8px;
-        border-collapse: collapse;
-        font-family: 'Space Mono', monospace;
-        font-size: 11px;
-        color: #301C1D;
-      }
-      .today-bill-table th {
-        font-size: 9px;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: rgba(48,28,29,0.4);
-        text-align: left;
-        padding: 4px 6px;
-        border-bottom: 1px solid rgba(48,28,29,0.1);
-      }
-      .today-bill-table td {
-        padding: 5px 6px;
-        border-bottom: 1px solid rgba(48,28,29,0.06);
-        vertical-align: middle;
-      }
-      .today-bill-table tfoot td {
-        font-weight: bold;
-        color: #E94D32;
-        border-top: 1px solid rgba(48,28,29,0.12);
-        border-bottom: none;
-      }
-
-      /* ── DAILY FL TILE ── */
-      .dfl-item-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 0;
-        border-bottom: 1px solid rgba(48,28,29,0.06);
-      }
-      .dfl-item-text {
-        flex: 1;
-        font-family: 'Space Mono', monospace;
-        font-size: 12px;
-        color: #301C1D;
-      }
-      .dfl-item-row.dfl-done .dfl-item-text {
-        text-decoration: line-through;
-        opacity: 0.45;
-      }
-      .dfl-mins-badge {
-        font-family: 'Space Mono', monospace;
-        font-size: 10px;
-        color: #7FA497;
-        letter-spacing: 0.06em;
-      }
-      .dfl-edit-btn, .dfl-del-btn {
-        background: none;
-        border: none;
-        font-size: 12px;
-        cursor: pointer;
-        padding: 2px 4px;
-        color: rgba(48,28,29,0.25);
-        transition: color 0.1s;
-      }
-      .dfl-edit-btn:hover { color: #5b8bd4; }
-      .dfl-del-btn:hover { color: #E94D32; }
 
       /* ── CONFETTI ── */
       @keyframes confettiBurst {
@@ -2579,25 +2451,6 @@
       <!-- Rendered dynamically by renderTodayTab() -->
     </div>
 
-    <!-- Daily FL completion prompt -->
-    <div id="dfl-completion-modal" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(48,28,29,0.75);align-items:center;justify-content:center;">
-      <div style="background:#FFFEE7;border:2px solid #301C1D;padding:28px;max-width:400px;width:90vw;box-sizing:border-box;">
-        <div id="dfl-comp-title" style="font-family:'Archivo Black',sans-serif;font-size:18px;color:#301C1D;margin-bottom:20px;line-height:1.3;"></div>
-        <div style="margin-bottom:16px;">
-          <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.5);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px;">How long?</div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <input id="dfl-comp-mins" type="number" min="1" max="999" placeholder="mins"
-              style="background:#FFFEE7;border:2px solid #301C1D;color:#301C1D;font-family:'Space Mono',monospace;font-size:18px;padding:9px 12px;width:90px;outline:none;text-align:center;"
-              onkeydown="if(event.key==='Enter')dflConfirmComplete()"/>
-            <span style="font-family:'Space Mono',monospace;font-size:12px;color:rgba(48,28,29,0.4);">minutes</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <button onclick="dflCancelComplete()" style="background:#FFFEE7;border:2px solid rgba(48,28,29,0.35);color:rgba(48,28,29,0.5);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:11px 18px;cursor:pointer;">Cancel</button>
-          <button onclick="dflConfirmComplete()" style="background:#301C1D;border:2px solid #301C1D;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:11px 24px;cursor:pointer;flex:1;">Save ✓</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- ══ WEEKLY SUMMARY ══ -->
@@ -2937,7 +2790,9 @@
       .sl-bucket-card {
         background: #FFFEE7;
         padding: 0;
-        width: 100%;
+        flex: 1 1 320px;
+        min-width: 280px;
+        max-width: 480px;
         display: flex;
         flex-direction: column;
       }
@@ -4707,9 +4562,9 @@
     // Also refresh Today tab tiles if that tab is active
     if (!renderSortedList._refreshing) {
       const todaySec = document.getElementById('today');
-      if (todaySec && todaySec.classList.contains('visible') && typeof renderTodayTiles === 'function') {
+      if (todaySec && todaySec.classList.contains('visible') && typeof renderBingoCard === 'function') {
         renderSortedList._refreshing = true;
-        try { renderTodayTiles(); renderBingoCard(); } catch(e) {}
+        try { renderBingoCard(); } catch(e) {}
         renderSortedList._refreshing = false;
       }
     }
@@ -4768,8 +4623,10 @@
       }
     }
 
-    const sortedItems   = allItems.filter(it => it[view.field]);
-    const unsortedItems = allItems.filter(it => !it[view.field]);
+    // Exclude completed items from the bucket tiles — they live in the Completed tile only.
+    const activeItems   = allItems.filter(it => !it.listCompleted);
+    const sortedItems   = activeItems.filter(it => it[view.field]);
+    const unsortedItems = activeItems.filter(it => !it[view.field]);
 
     el.innerHTML = '';
 
@@ -4786,6 +4643,9 @@
         unsortedItems, view
       ));
     }
+
+    // Completed tile — sits alongside the bucket tiles, same width
+    try { el.appendChild(buildCompletedTile(view)); } catch(e) { console.error(e); }
 
     if (!el.children.length) {
       el.innerHTML = '<div style="font-family:\'Space Mono\',monospace;font-size:13px;color:rgba(255,254,231,0.35);padding:24px;">No items yet. Add items in the Sort tab.</div>';
@@ -4867,6 +4727,283 @@
    * @param {Object} view - Active view definition from SL_VIEWS
    * @returns {HTMLElement} The constructed card DOM element
    */
+
+  // ── Completed tile helpers ──
+  const SL_COMPLETED_CUTOFF_KEY = 'sl_completed_cutoff_v1';
+
+  function slGetCompletedCutoff() {
+    try { return localStorage.getItem(SL_COMPLETED_CUTOFF_KEY) || null; }
+    catch { return null; }
+  }
+
+  function slItemCompletedMs(item) {
+    // Prefer explicit ISO timestamp; fall back to date-only completedOn @ 00:00 local
+    if (item.completedAt) {
+      const t = Date.parse(item.completedAt);
+      if (!isNaN(t)) return t;
+    }
+    if (item.completedOn) {
+      let s = item.completedOn;
+      // Normalize MM/DD/YY → YYYY-MM-DD
+      if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) s = '20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+      }
+      const t = Date.parse(s + 'T00:00:00');
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  }
+
+  function slComputeBillableToday() {
+    const today = todayStr();
+    const items = loadSortItems();
+    let mins = 0;
+    items.forEach(it => {
+      if (it.listCompleted && it.meta === 'fl' && typeof it.completedMins === 'number') {
+        // Normalize completedOn to YYYY-MM-DD for comparison
+        let d = it.completedOn || '';
+        if (d.includes('/')) {
+          const parts = d.split('/');
+          if (parts.length === 3) d = '20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+        }
+        if (d === today) mins += it.completedMins;
+      }
+    });
+    return mins;
+  }
+
+  function slFormatBillable(mins) {
+    if (!mins) return 'No billable today';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return mins + 'm · ' + h + 'h ' + String(m).padStart(2,'0') + 'm';
+  }
+
+  function slArchiveCompleted() {
+    if (!confirm('Archive all completed items from this view? They\'ll still exist in their buckets but be hidden here.')) return;
+    try { localStorage.setItem(SL_COMPLETED_CUTOFF_KEY, new Date().toISOString()); } catch {}
+    renderSortedList();
+  }
+  window.slArchiveCompleted = slArchiveCompleted;
+
+  function slAddCompletedDirect() {
+    const input = document.getElementById('sl-cmp-add-input');
+    const flBox = document.getElementById('sl-cmp-add-fl');
+    if (!input) return;
+    const text = (input.value || '').trim();
+    if (!text) return;
+    const isFL = !!(flBox && flBox.checked);
+    const items = loadSortItems();
+    const nowIso = new Date().toISOString();
+    const newItem = {
+      id: 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      text: text,
+      bucket: 'must',
+      meta: isFL ? 'fl' : null,
+      listCompleted: true,
+      completedOn: todayStr(),
+      completedAt: nowIso
+    };
+    items.push(newItem);
+    saveSortItems(items);
+    sortAllItems = items;
+    ensureDailyLogEntry(todayStr());
+    input.value = '';
+    if (flBox) flBox.checked = false;
+    if (isFL) {
+      // Reuse existing minutes prompt
+      _slPendingItemId = newItem.id;
+      try { slShowCompletionPrompt(newItem); } catch(e) { console.error(e); }
+    }
+    renderSortedList();
+  }
+  window.slAddCompletedDirect = slAddCompletedDirect;
+
+  /**
+   * Edit completedMins on a completed item. Opens a prompt() for the new
+   * value, updates the item, and syncs the billable unified-log entry if
+   * this is an FL item with a logged completion date.
+   */
+  function slEditCompletedMins(itemId) {
+    const items = loadSortItems();
+    const item = items.find(it => it.id == itemId);
+    if (!item) return;
+    const current = (item.completedMins != null ? item.completedMins : '');
+    const raw = prompt('How many minutes did this take?', current);
+    if (raw === null) return; // cancel
+    const trimmed = String(raw).trim();
+    const mins = trimmed === '' ? null : parseInt(trimmed, 10);
+    if (mins !== null && (isNaN(mins) || mins < 0)) {
+      alert('Please enter a whole number of minutes, or leave blank to clear.');
+      return;
+    }
+    item.completedMins = mins;
+    saveSortItems(items);
+    sortAllItems = items;
+
+    // Keep the unified billable log in sync for FL items
+    if (item.meta === 'fl' && item.completedOn) {
+      try {
+        let dateKey = item.completedOn;
+        if (dateKey.includes('/')) {
+          const parts = dateKey.split('/');
+          if (parts.length === 3) dateKey = '20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+        }
+        const client  = (FL_CLIENTS && FL_CLIENTS[item.subcategory]) || 'WLFW';
+        const project = item.subcategory ? item.subcategory.replace(/-/g,' ').replace(/\b\w/g,ch=>ch.toUpperCase()) : 'FL';
+        const desc    = toSentenceCase(item.text);
+        const log     = loadUnifiedLog();
+        const logKey  = dateKey + '_focus';
+
+        if (!log[logKey]) log[logKey] = {};
+        const hKeys   = Object.keys(log[logKey]).filter(k => k.startsWith('h'));
+        let slKey     = hKeys.find(k => log[logKey][k] && log[logKey][k].sl === true);
+        if (!slKey) {
+          slKey = 'h' + (hKeys.length + 1);
+          log[logKey][slKey] = { completed: true, sl: true, label: 'Sorted List', items: [] };
+        }
+        const section = log[logKey][slKey];
+        section.items = section.items || [];
+        // Match existing entry by desc + client (same rule slAddToBillable uses to dedupe)
+        const existing = section.items.find(i => (i.desc === desc || i.desc === item.text) && i.client === client);
+        if (existing) {
+          if (mins == null || mins === 0) {
+            section.items = section.items.filter(i => i !== existing);
+          } else {
+            existing.mins = mins;
+            existing.project = project;
+          }
+        } else if (mins != null && mins > 0) {
+          section.items.push({ client, project, desc, mins });
+        }
+        saveUnifiedLog(log);
+      } catch(e) { console.warn('slEditCompletedMins log update:', e); }
+    }
+
+    renderSortedList();
+  }
+  window.slEditCompletedMins = slEditCompletedMins;
+
+  /**
+   * Build the Completed tile — sits alongside bucket tiles in the flex-wrap
+   * container. Uses buildItemRow() for each row so completed items get all
+   * the same controls (rename via double-click, change category via tag
+   * editor, star, delete, drag) except the "Move to Ideas" button.
+   * Header has a Clear (archive) button; direct-add row accepts a new task
+   * with an FL toggle; footer shows today's billable minutes.
+   */
+  function buildCompletedTile(view) {
+    const card = document.createElement('div');
+    card.className = 'sl-bucket-card';
+    card.dataset.bucketKey = '__completed';
+
+    // Header with Clear button
+    const hdr = document.createElement('div');
+    hdr.className = 'sl-bucket-header';
+    const hdrText = document.createElement('span');
+    hdrText.className = 'sl-hdr-text';
+    hdrText.textContent = 'Completed';
+    hdr.appendChild(hdrText);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = '↻ Clear';
+    clearBtn.title = 'Archive all completed items from this view';
+    clearBtn.style.cssText = "margin-left:auto;background:none;border:1px solid rgba(48,28,29,0.25);color:rgba(48,28,29,0.55);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:4px 8px;cursor:pointer;transition:all 0.12s;";
+    clearBtn.onmouseover = () => { clearBtn.style.color = '#301C1D'; clearBtn.style.borderColor = '#301C1D'; };
+    clearBtn.onmouseout = () => { clearBtn.style.color = 'rgba(48,28,29,0.55)'; clearBtn.style.borderColor = 'rgba(48,28,29,0.25)'; };
+    clearBtn.onclick = slArchiveCompleted;
+    hdr.appendChild(clearBtn);
+    card.appendChild(hdr);
+
+    // Direct-add row
+    const addRow = document.createElement('div');
+    addRow.style.cssText = "display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid rgba(48,28,29,0.1);background:rgba(247,179,56,0.08);flex-wrap:wrap;";
+
+    const addInput = document.createElement('input');
+    addInput.type = 'text';
+    addInput.id = 'sl-cmp-add-input';
+    addInput.placeholder = '+ completed task';
+    addInput.style.cssText = "flex:1 1 140px;background:#FFFEE7;border:1px solid rgba(48,28,29,0.2);color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:5px 8px;outline:none;min-width:0;";
+    addInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); slAddCompletedDirect(); } };
+    addRow.appendChild(addInput);
+
+    const flLabel = document.createElement('label');
+    flLabel.style.cssText = "display:flex;align-items:center;gap:3px;font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.7);letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;user-select:none;";
+    const flCb = document.createElement('input');
+    flCb.type = 'checkbox';
+    flCb.id = 'sl-cmp-add-fl';
+    flCb.style.cssText = "margin:0;cursor:pointer;";
+    flLabel.appendChild(flCb);
+    const flSpan = document.createElement('span');
+    flSpan.textContent = 'FL';
+    flLabel.appendChild(flSpan);
+    addRow.appendChild(flLabel);
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Add';
+    addBtn.style.cssText = "background:#E94D32;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:5px 10px;cursor:pointer;";
+    addBtn.onclick = slAddCompletedDirect;
+    addRow.appendChild(addBtn);
+
+    card.appendChild(addRow);
+
+    // Items list — reuse buildItemRow() so completed items get all the standard
+    // controls (rename, change category, star, delete, drag) except Move-to-Ideas.
+    const cutoff = slGetCompletedCutoff();
+    const cutoffMs = cutoff ? Date.parse(cutoff) : 0;
+    const items = loadSortItems()
+      .filter(it => it.listCompleted && slItemCompletedMs(it) >= cutoffMs)
+      .sort((a, b) => slItemCompletedMs(b) - slItemCompletedMs(a));
+
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);padding:14px 16px;text-align:center;";
+      empty.textContent = 'Nothing completed yet';
+      card.appendChild(empty);
+    } else {
+      const activeView = view || SL_VIEWS[slView] || SL_VIEWS.timing;
+      items.forEach(item => {
+        const row = buildItemRow(item, activeView, { hideMoveToIdeas: true });
+        // Mins badge — clickable for ALL completed items (FL items show mins, non-FL items can add mins).
+        // Appended as the last child so it sits after the action buttons.
+        const hasMins = typeof item.completedMins === 'number' && item.completedMins > 0;
+        const badge = document.createElement('button');
+        badge.type = 'button';
+        badge.title = 'Click to edit minutes';
+        badge.textContent = hasMins ? (item.completedMins + 'm') : '+ m';
+        const baseColor = hasMins ? '#E94D32' : 'rgba(48,28,29,0.35)';
+        const baseBg    = hasMins ? 'rgba(233,77,50,0.1)' : 'rgba(48,28,29,0.05)';
+        badge.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:" + baseColor + ";background:" + baseBg + ";padding:2px 6px;letter-spacing:0.04em;flex-shrink:0;margin-left:4px;border:none;cursor:pointer;transition:all 0.1s;";
+        badge.onmouseover = () => { badge.style.color = '#FFFEE7'; badge.style.background = '#E94D32'; };
+        badge.onmouseout  = () => { badge.style.color = baseColor; badge.style.background = baseBg; };
+        badge.addEventListener('mousedown', e => e.stopPropagation()); // prevent drag
+        badge.onclick = (e) => { e.stopPropagation(); slEditCompletedMins(item.id); };
+        row.appendChild(badge);
+        card.appendChild(row);
+      });
+    }
+
+    // Billable footer
+    const mins = slComputeBillableToday();
+    const footer = document.createElement('div');
+    footer.style.cssText = "padding:10px 14px;margin-top:auto;border-top:2px solid #301C1D;background:#301C1D;color:#FFFEE7;font-family:'Space Mono',monospace;";
+
+    const label = document.createElement('div');
+    label.style.cssText = "font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,254,231,0.5);margin-bottom:3px;";
+    label.textContent = 'Billable Today';
+    footer.appendChild(label);
+
+    const value = document.createElement('div');
+    value.style.cssText = "font-family:'Archivo Black',sans-serif;font-size:14px;color:" + (mins ? '#F7B338' : 'rgba(255,254,231,0.4)') + ";letter-spacing:0.02em;";
+    value.textContent = slFormatBillable(mins);
+    footer.appendChild(value);
+
+    card.appendChild(footer);
+
+    return card;
+  }
+
   function buildBucketCard(bucket, items, view) {
     const card = document.createElement('div');
     card.className = 'sl-bucket-card';
@@ -5160,7 +5297,8 @@
    * @param {Object} view - Active view definition
    * @returns {HTMLElement} The constructed row DOM element
    */
-  function buildItemRow(item, view) {
+  function buildItemRow(item, view, opts) {
+    opts = opts || {};
     const row = document.createElement('div');
     row.className = 'sl-item-row';
     row.dataset.itemId = item.id;
@@ -5328,7 +5466,7 @@
     row.appendChild(cb);
     row.appendChild(txtWrap);
     row.appendChild(starBtn);
-    row.appendChild(ideaBtn);
+    if (!opts.hideMoveToIdeas) row.appendChild(ideaBtn);
     row.appendChild(tagBtn);
     row.appendChild(delBtn);
     return row;
@@ -5809,12 +5947,13 @@
       item.listCompleted = false;
       item.completedOn   = null;
       item.completedMins = null;
+      item.completedAt   = null;
       saveSortItems(sortAllItems);
       renderSortedList();
-      // Refresh Today tab if visible
+      // Refresh Bingo if visible
       const todaySec = document.getElementById('today');
-      if (todaySec && todaySec.classList.contains('visible') && typeof renderTodayTab === 'function') {
-        setTimeout(() => renderTodayTab(), 50);
+      if (todaySec && todaySec.classList.contains('visible') && typeof renderBingoCard === 'function') {
+        setTimeout(() => renderBingoCard(), 50);
       }
       return;
     }
@@ -5826,13 +5965,14 @@
     } else {
       item.listCompleted = true;
       item.completedOn   = item.completedOn || todayStr();
+      item.completedAt   = item.completedAt || new Date().toISOString();
       saveSortItems(sortAllItems);
       ensureDailyLogEntry(todayStr());
       renderSortedList();
-      // Refresh Today tab if visible
-      const todaySec = document.getElementById('today');
-      if (todaySec && todaySec.classList.contains('visible') && typeof renderTodayTab === 'function') {
-        setTimeout(() => renderTodayTab(), 50);
+      // Refresh Bingo if visible
+      const todaySec2 = document.getElementById('today');
+      if (todaySec2 && todaySec2.classList.contains('visible') && typeof renderBingoCard === 'function') {
+        setTimeout(() => renderBingoCard(), 50);
       }
     }
   }
@@ -5897,6 +6037,7 @@
     item.listCompleted = true;
     item.completedOn   = _slPendingDate || null;
     item.completedMins = mins;
+    item.completedAt   = item.completedAt || new Date().toISOString();
     saveSortItems(sortAllItems);
 
     // Add to billable if FL
@@ -6262,7 +6403,6 @@
         cell.completed = true;
         saveBingoState(state);
         renderBingoCard();
-        renderTodayTiles();
         checkBingoLines(state);
       }
     }
@@ -6286,7 +6426,7 @@
       _bingoPendingCellIdx = null;
     }
     if (document.getElementById('today') && document.getElementById('today').classList.contains('visible')) {
-      setTimeout(() => { try { renderTodayTab(); } catch(e) {} }, 50);
+      setTimeout(() => { try { renderBingoCard(); } catch(e) {} }, 50);
     }
   }
   window.slConfirmComplete = _extendedSlConfirmComplete;
@@ -6372,416 +6512,14 @@
     if (progEl) progEl.textContent = completedCount + '/' + itemCount + ' done · ' + lineCount + ' line' + (lineCount !== 1 ? 's' : '');
   }
 
-  // ── Render Completed Today tile ──
-  function renderCompletedTodayTile() {
-    const wrap = document.getElementById('today-completed-wrap');
-    if (!wrap) return;
-    wrap.innerHTML = '';
-
-    const card = document.createElement('div');
-    card.className = 'today-tile';
-
-    const items = loadSortItems().filter(it => it.listCompleted && it.completedOn);
-    const today = todayStr();
-    const todayItems = items.filter(it => {
-      let d = it.completedOn;
-      if (d && d.includes('/')) {
-        const parts = d.split('/');
-        if (parts.length === 3) d = '20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
-      }
-      return d === today;
-    });
-
-    // Header in sorted-list style
-    const hdr = document.createElement('div');
-    hdr.className = 'sl-bucket-header';
-    hdr.innerHTML = '<span class="sl-hdr-text">Completed Today</span>';
-    const countSpan = document.createElement('span');
-    countSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
-    countSpan.textContent = todayItems.length + ' item' + (todayItems.length !== 1 ? 's' : '');
-    hdr.appendChild(countSpan);
-    card.appendChild(hdr);
-
-    if (todayItems.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
-      empty.textContent = 'Nothing completed yet today';
-      card.appendChild(empty);
-    } else {
-      todayItems.forEach(item => {
-        const row = document.createElement('div');
-        row.className = 'today-item-row today-done';
-        const displayText = (item.text || '').replace(/^\[\d+\]\s*/, '').replace(/^\[.*?\]\s*/, '');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = true;
-        cb.disabled = true;
-        row.appendChild(cb);
-        const txt = document.createElement('span');
-        txt.className = 'today-item-text';
-        txt.textContent = displayText;
-        row.appendChild(txt);
-        if (item.completedMins) {
-          const badge = document.createElement('span');
-          badge.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:#7FA497;letter-spacing:0.06em;";
-          badge.textContent = item.completedMins + 'm';
-          row.appendChild(badge);
-        }
-        card.appendChild(row);
-      });
-    }
-
-    // Add task input
-    const inp = document.createElement('input');
-    inp.className = 'today-add-input';
-    inp.placeholder = '+ add completed task…';
-    inp.onkeydown = (e) => {
-      if (e.key === 'Enter' && inp.value.trim()) {
-        addCompletedTodayItem(inp.value.trim());
-        inp.value = '';
-      }
-    };
-    card.appendChild(inp);
-    wrap.appendChild(card);
-  }
-
-  function addCompletedTodayItem(text) {
-    sortAllItems = loadSortItems();
-    sortAllItems.push({
-      id: Date.now() + Math.random(),
-      text: text,
-      listCompleted: true,
-      completedOn: todayStr(),
-      length: null, category: null, subcategory: null, meta: null, timing: null,
-    });
-    saveSortItems(sortAllItems);
-    ensureDailyLogEntry(todayStr());
-    renderCompletedTodayTile();
-  }
-  window.addCompletedTodayItem = addCompletedTodayItem;
-
-  // ── Render Must Today tile (reuses buildBucketCard from sorted list) ──
-  function renderMustTodayTile() {
-    const wrap = document.getElementById('today-must-wrap');
-    if (!wrap) return;
-    sortAllItems = loadSortItems();
-    const items = sortAllItems.filter(it => it.timing === 'must');
-    const view = SL_VIEWS.timing;
-    const bucket = { key: 'must', label: 'Must Today', accent: '#E94D32' };
-    wrap.innerHTML = '';
-    const card = buildBucketCard(bucket, items, view);
-    wrap.appendChild(card);
-  }
-
-  // ── Render Ideally Today tile (reuses buildBucketCard from sorted list) ──
-  function renderIdeallyTodayTile() {
-    const wrap = document.getElementById('today-ideally-wrap');
-    if (!wrap) return;
-    sortAllItems = loadSortItems();
-    const items = sortAllItems.filter(it => it.timing === 'ideally');
-    const view = SL_VIEWS.timing;
-    const bucket = { key: 'ideally', label: 'Ideally Today', accent: '#F7B338' };
-    wrap.innerHTML = '';
-    const card = buildBucketCard(bucket, items, view);
-    wrap.appendChild(card);
-  }
-
-  // ── Render Billable Summary tile (dark theme, visually distinct) ──
-  function renderBillableSummaryTile() {
-    const container = document.getElementById('today-billable-wrap');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const card = document.createElement('div');
-    card.className = 'today-tile';
-
-    const today = todayStr();
-    const allRows = collectBillableRows();
-    const todayRows = allRows.filter(r => r.date === today);
-    const totalMins = todayRows.reduce((s, r) => s + Number(r.mins), 0);
-    const totalHrs = (totalMins / 60).toFixed(1);
-
-    // Header — matching yellow/red style
-    const hdr = document.createElement('div');
-    hdr.className = 'sl-bucket-header';
-    hdr.innerHTML = '<span class="sl-hdr-text">Billable Hours</span>';
-    const accent = document.createElement('span');
-    accent.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
-    accent.textContent = totalHrs + ' hrs';
-    hdr.appendChild(accent);
-    card.appendChild(hdr);
-
-    if (todayRows.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.35);padding:10px 16px;";
-      empty.textContent = 'No billable time logged today';
-      card.appendChild(empty);
-    } else {
-      const table = document.createElement('table');
-      table.className = 'today-bill-table today-bill-table-light';
-
-      const thead = document.createElement('thead');
-      thead.innerHTML = '<tr><th>Client</th><th>Description</th><th style="text-align:right">Min</th><th style="text-align:right">Hrs</th><th></th></tr>';
-      table.appendChild(thead);
-
-      const tfoot = document.createElement('tfoot');
-      tfoot.innerHTML = '<tr><td colspan="2">Total</td><td style="text-align:right">' + totalMins + '</td><td style="text-align:right">' + totalHrs + '</td><td></td></tr>';
-      table.appendChild(tfoot);
-
-      const tbody = document.createElement('tbody');
-      window._todayBillableRowMap = {};
-      todayRows.forEach(r => {
-        const editKey = r._origKey || (r.date + '|' + r.client + '|' + r.project + '|' + r.desc);
-        window._todayBillableRowMap[editKey] = r;
-        const tr = document.createElement('tr');
-        const cells = [
-          { val: r.client, extra: '' },
-          { val: r.desc, extra: '' },
-          { val: r.mins, extra: 'text-align:right' },
-          { val: (Number(r.mins)/60).toFixed(1), extra: 'text-align:right' },
-        ];
-        cells.forEach(c => {
-          const td = document.createElement('td');
-          if (c.extra) td.style.cssText = c.extra;
-          td.textContent = c.val;
-          tr.appendChild(td);
-        });
-        const editTd = document.createElement('td');
-        editTd.style.cssText = 'text-align:center;width:28px;';
-        const editBtn = document.createElement('button');
-        editBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.25);font-size:13px;cursor:pointer;padding:2px;transition:color 0.1s;';
-        editBtn.textContent = '✎';
-        editBtn.title = 'Edit';
-        editBtn.onmouseover = () => editBtn.style.color = '#5b8bd4';
-        editBtn.onmouseout = () => editBtn.style.color = 'rgba(48,28,29,0.25)';
-        editBtn.onclick = () => openBillableEditModal(r, editKey);
-        editTd.appendChild(editBtn);
-        tr.appendChild(editTd);
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      card.appendChild(table);
-    }
-    container.appendChild(card);
-  }
-
-  // ── Daily FL Activities ──
-  let _dflPendingItemId = null;
-
-  function getDailyFLData() {
-    let data = loadDailyFL();
-    if (!data) {
-      data = { items: DEFAULT_DAILY_FL.map(d => ({ ...d, completedToday: false, completedMins: null, lastResetDate: todayStr() })) };
-      saveDailyFL(data);
-    }
-    const today = todayStr();
-    let changed = false;
-    data.items.forEach(item => {
-      if (item.lastResetDate !== today) {
-        item.completedToday = false;
-        item.completedMins = null;
-        item.lastResetDate = today;
-        changed = true;
-      }
-    });
-    if (changed) saveDailyFL(data);
-    return data;
-  }
-
-  function renderDailyFLTile() {
-    const wrap = document.getElementById('today-dailyfl-wrap');
-    if (!wrap) return;
-    wrap.innerHTML = '';
-
-    const card = document.createElement('div');
-    card.className = 'today-tile';
-
-    const data = getDailyFLData();
-    const doneCount = data.items.filter(i => i.completedToday).length;
-
-    // Header
-    const hdr = document.createElement('div');
-    hdr.className = 'sl-bucket-header';
-    hdr.innerHTML = '<span class="sl-hdr-text">Daily FL</span>';
-    const countSpan = document.createElement('span');
-    countSpan.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;margin-left:auto;";
-    countSpan.textContent = doneCount + '/' + data.items.length;
-    hdr.appendChild(countSpan);
-    card.appendChild(hdr);
-
-    data.items.forEach(item => {
-      const row = document.createElement('div');
-      row.className = 'dfl-item-row' + (item.completedToday ? ' dfl-done' : '');
-
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = !!item.completedToday;
-      cb.style.flexShrink = '0';
-      cb.addEventListener('change', () => {
-        if (cb.checked) {
-          _dflPendingItemId = item.id;
-          const titleEl = document.getElementById('dfl-comp-title');
-          if (titleEl) titleEl.textContent = item.text;
-          const minsEl = document.getElementById('dfl-comp-mins');
-          if (minsEl) minsEl.value = '';
-          const modal = document.getElementById('dfl-completion-modal');
-          if (modal) { modal.style.display = 'flex'; setTimeout(() => minsEl && minsEl.focus(), 50); }
-        } else {
-          const freshData = getDailyFLData();
-          const fi = freshData.items.find(i => i.id === item.id);
-          if (fi) { fi.completedToday = false; fi.completedMins = null; }
-          saveDailyFL(freshData);
-          renderDailyFLTile();
-        }
-      });
-
-      const txt = document.createElement('span');
-      txt.className = 'dfl-item-text';
-      txt.textContent = item.text;
-
-      row.appendChild(cb);
-      row.appendChild(txt);
-
-      if (item.completedToday && item.completedMins) {
-        const badge = document.createElement('span');
-        badge.className = 'dfl-mins-badge';
-        badge.textContent = item.completedMins + 'm';
-        row.appendChild(badge);
-      }
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'dfl-edit-btn';
-      editBtn.textContent = '✎';
-      editBtn.title = 'Edit';
-      editBtn.onclick = (e) => {
-        e.stopPropagation();
-        const newText = prompt('Edit activity:', item.text);
-        if (newText && newText.trim()) {
-          const freshData = getDailyFLData();
-          const fi = freshData.items.find(i => i.id === item.id);
-          if (fi) fi.text = newText.trim();
-          saveDailyFL(freshData);
-          renderDailyFLTile();
-        }
-      };
-
-      const delBtn = document.createElement('button');
-      delBtn.className = 'dfl-del-btn';
-      delBtn.textContent = '×';
-      delBtn.title = 'Remove';
-      delBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (confirm('Remove "' + item.text + '" from daily activities?')) {
-          const freshData = getDailyFLData();
-          freshData.items = freshData.items.filter(i => i.id !== item.id);
-          saveDailyFL(freshData);
-          renderDailyFLTile();
-        }
-      };
-
-      row.appendChild(editBtn);
-      row.appendChild(delBtn);
-      card.appendChild(row);
-    });
-
-    const inp = document.createElement('input');
-    inp.className = 'today-add-input';
-    inp.placeholder = '+ add daily activity…';
-    inp.onkeydown = (e) => {
-      if (e.key === 'Enter' && inp.value.trim()) {
-        const freshData = getDailyFLData();
-        freshData.items.push({
-          id: Date.now() + Math.random(),
-          text: inp.value.trim(),
-          completedToday: false,
-          completedMins: null,
-          lastResetDate: todayStr(),
-        });
-        saveDailyFL(freshData);
-        inp.value = '';
-        renderDailyFLTile();
-      }
-    };
-    card.appendChild(inp);
-    wrap.appendChild(card);
-  }
-
-  function dflConfirmComplete() {
-    const data = getDailyFLData();
-    const item = data.items.find(i => i.id === _dflPendingItemId);
-    if (!item) { document.getElementById('dfl-completion-modal').style.display = 'none'; return; }
-    const mins = parseInt(document.getElementById('dfl-comp-mins').value) || null;
-    item.completedToday = true;
-    item.completedMins = mins;
-    item.lastResetDate = todayStr();
-    saveDailyFL(data);
-
-    if (mins) {
-      const today = new Date();
-      const fmt = d => (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(-2);
-      const fakeItem = { text: item.text, meta: 'fl', subcategory: null };
-      slAddToBillable(fakeItem, mins, fmt(today));
-    }
-
-    ensureDailyLogEntry(todayStr());
-    _dflPendingItemId = null;
-    document.getElementById('dfl-completion-modal').style.display = 'none';
-    renderDailyFLTile();
-    renderBillableSummaryTile();
-  }
-
-  function dflCancelComplete() {
-    _dflPendingItemId = null;
-    document.getElementById('dfl-completion-modal').style.display = 'none';
-    renderDailyFLTile();
-  }
-
-  window.dflConfirmComplete = dflConfirmComplete;
-  window.dflCancelComplete = dflCancelComplete;
-
-  function renderTodayTiles() {
-    renderCompletedTodayTile();
-    renderMustTodayTile();
-    renderIdeallyTodayTile();
-    renderBillableSummaryTile();
-    renderDailyFLTile();
-  }
-
-  /** Master render function for Today tab */
+  /** Master render function for Bingo tab */
   function renderTodayTab() {
     const content = document.getElementById('today-content');
     if (!content) return;
 
     content.innerHTML = '';
 
-    // ── ALL TILES IN A 2-COLUMN GRID ──
-    const grid = document.createElement('div');
-    grid.className = 'today-grid';
-
-    const mustWrap = document.createElement('div');
-    mustWrap.id = 'today-must-wrap';
-    grid.appendChild(mustWrap);
-
-    const ideallyWrap = document.createElement('div');
-    ideallyWrap.id = 'today-ideally-wrap';
-    grid.appendChild(ideallyWrap);
-
-    const dflWrap = document.createElement('div');
-    dflWrap.id = 'today-dailyfl-wrap';
-    grid.appendChild(dflWrap);
-
-    const compWrap = document.createElement('div');
-    compWrap.id = 'today-completed-wrap';
-    grid.appendChild(compWrap);
-
-    const billWrap = document.createElement('div');
-    billWrap.id = 'today-billable-wrap';
-    billWrap.className = 'today-billable-wrap';
-    grid.appendChild(billWrap);
-
-    content.appendChild(grid);
-
-    // ── BINGO BOARD (below tiles, directly on dark background) ──
+    // ── BINGO BOARD ──
     const bingoSection = document.createElement('div');
     bingoSection.style.cssText = 'margin-top:4px;';
 
@@ -6810,10 +6548,8 @@
     content.appendChild(bingoSection);
 
     renderBingoCard();
-    renderTodayTiles();
   }
   window.renderTodayTab = renderTodayTab;
-
   // ══════════════════════════════════════════════════════════════════
 
   // ── ANYMALS SLIDING PUZZLE: 3×3, 7 tiles + 2 empty spaces ──
@@ -11091,6 +10827,7 @@ const SYNC_STATIC_KEYS = [
   'ideas_categories_v1',
   'today_bingo_v1',
   'today_daily_fl_v1',
+  'sl_completed_cutoff_v1',
 ];
 const SYNC_KEY_PREFIXES = ['journal_daily_', 'journal_week_', 'journal_list_'];
 
@@ -11110,13 +10847,132 @@ function gistCollectData() {
   return data;
 }
 
+// ── MERGE STRATEGIES ──
+// Instead of blindly overwriting local data on pull, merge intelligently
+// so entries from both devices are preserved.
+
+function gistMergeKey(key, local, remote) {
+  // 1) Object with date-based sub-keys — union keys, deep merge focus entries
+  if (key === 'unified_log_v1') {
+    if (!local || typeof local !== 'object' || Array.isArray(local)) return remote;
+    if (!remote || typeof remote !== 'object' || Array.isArray(remote)) return local;
+    const merged = { ...local };
+    Object.entries(remote).forEach(([dk, rv]) => {
+      if (!merged[dk]) { merged[dk] = rv; return; }
+      // For focus entries, merge at section level to preserve items from both devices
+      if (dk.endsWith('_focus') && typeof merged[dk] === 'object' && typeof rv === 'object') {
+        const localDay = merged[dk];
+        const mergedDay = { ...localDay };
+        Object.entries(rv).forEach(([sk, rsec]) => {
+          if (!mergedDay[sk]) { mergedDay[sk] = rsec; return; }
+          // Both have this section — merge items arrays
+          if (rsec.items && mergedDay[sk].items) {
+            const seen = new Set(mergedDay[sk].items.map(i => (i.desc || '') + '|' + (i.client || '')));
+            const combined = [...mergedDay[sk].items];
+            rsec.items.forEach(i => {
+              const ik = (i.desc || '') + '|' + (i.client || '');
+              if (!seen.has(ik)) { combined.push(i); seen.add(ik); }
+            });
+            mergedDay[sk] = { ...rsec, items: combined };
+          } else {
+            mergedDay[sk] = rsec;
+          }
+        });
+        merged[dk] = mergedDay;
+      } else {
+        // Non-focus entries (routines): remote wins
+        merged[dk] = rv;
+      }
+    });
+    return merged;
+  }
+  if (key === 'routine_ab_v1') {
+    if (!local || typeof local !== 'object' || Array.isArray(local)) return remote;
+    if (!remote || typeof remote !== 'object' || Array.isArray(remote)) return local;
+    return { ...local, ...remote };
+  }
+
+  // 2) Billable edits — union row keys, merge __extras by _id
+  if (key === 'billable_edits_v1') {
+    if (!local || typeof local !== 'object') return remote;
+    if (!remote || typeof remote !== 'object') return local;
+    const merged = { ...local, ...remote };
+    const localExtras = Array.isArray(local.__extras) ? local.__extras : [];
+    const remoteExtras = Array.isArray(remote.__extras) ? remote.__extras : [];
+    const byId = new Map();
+    localExtras.forEach(e => byId.set(e._id || ('_local_' + byId.size), e));
+    remoteExtras.forEach(e => byId.set(e._id || ('_remote_' + byId.size), e));
+    merged.__extras = Array.from(byId.values());
+    return merged;
+  }
+
+  // 3) Arrays with IDs — union by id, remote wins duplicates
+  if (key === 'sortAllItems_v2' || key === 'ideas_items_v1') {
+    if (!Array.isArray(local)) return remote;
+    if (!Array.isArray(remote)) return local;
+    const byId = new Map(local.map(it => [it.id, it]));
+    remote.forEach(it => byId.set(it.id, it));
+    return Array.from(byId.values());
+  }
+
+  // 4) Highlights — append-merge, deduplicate by ts
+  if (key === 'hl_v1') {
+    if (!Array.isArray(local)) return remote;
+    if (!Array.isArray(remote)) return local;
+    const seen = new Set(local.map(h => h.ts));
+    const merged = [...local];
+    remote.forEach(h => { if (!seen.has(h.ts)) { merged.push(h); seen.add(h.ts); } });
+    return merged.sort((a, b) => a.ts - b.ts);
+  }
+
+  // 5) Time-wheel archive — append-merge, deduplicate by savedAt
+  if (key === 'tw_archive_v1') {
+    if (!Array.isArray(local)) return remote;
+    if (!Array.isArray(remote)) return local;
+    const seen = new Set(local.map(s => s.savedAt));
+    const merged = [...local];
+    remote.forEach(s => { if (!seen.has(s.savedAt)) { merged.push(s); seen.add(s.savedAt); } });
+    return merged.sort((a, b) => b.savedAt - a.savedAt);
+  }
+
+  // 6) Journal lists — append-merge, deduplicate by text+date
+  if (key.startsWith('journal_list_')) {
+    if (!Array.isArray(local)) return remote;
+    if (!Array.isArray(remote)) return local;
+    const seen = new Set(local.map(it => (it.text || '') + '|' + (it.date || '')));
+    const merged = [...local];
+    remote.forEach(it => {
+      const k = (it.text || '') + '|' + (it.date || '');
+      if (!seen.has(k)) { merged.push(it); seen.add(k); }
+    });
+    return merged;
+  }
+
+  // 7) Notch last reset — keep the most recent timestamp
+  if (key === 'notch_last_reset') {
+    return (Number(remote) || 0) > (Number(local) || 0) ? remote : local;
+  }
+
+  // 8) Default: last-write-wins (remote replaces local)
+  return remote;
+}
+
 function gistApplyData(data) {
   let count = 0;
   Object.entries(data).forEach(([key, val]) => {
     if (key.startsWith('_')) return;
     if (!gistShouldSync(key)) return;
-    try { localStorage.setItem(key, JSON.stringify(val)); count++; } catch {}
+    try {
+      const raw = localStorage.getItem(key);
+      let local = null;
+      if (raw !== null) { try { local = JSON.parse(raw); } catch { local = raw; } }
+      const merged = gistMergeKey(key, local, val);
+      localStorage.setItem(key, JSON.stringify(merged));
+      count++;
+    } catch {}
   });
+  // Also preserve local-only keys not present in remote
+  // (they stay in localStorage untouched since we only iterate remote keys)
   return count;
 }
 
@@ -11171,7 +11027,10 @@ async function gistPull() {
   // Always use raw_url when the file is truncated.
   let content = file.content;
   if ((!content || file.truncated) && file.raw_url) {
-    const raw = await fetch(file.raw_url);
+    const raw = await fetch(file.raw_url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!raw.ok) throw new Error(`Failed to fetch full file: HTTP ${raw.status}`);
     content = await raw.text();
   }
   const data = JSON.parse(content);
@@ -11273,9 +11132,13 @@ async function gistPullWithUI() {
     gistUpdateStatusBar();
     syncLog(`Pulled ${count} keys · data from ${syncedAt ? new Date(syncedAt).toLocaleString() : 'unknown'}`);
     // Reload UI from fresh storage
-    try { if (window.renderSortedList) renderSortedList(); } catch {}
-    try { if (window.renderPastLogs)   renderPastLogs(); } catch {}
+    try { if (window.renderSortedList)  renderSortedList(); } catch {}
+    try { if (window.renderPastLogs)    renderPastLogs(); } catch {}
     try { if (window.renderBillableCSV) renderBillableCSV(); } catch {}
+    try { if (window.renderTodayTab)    renderTodayTab(); } catch {}
+    try { if (window.renderIdeas)       renderIdeas(); } catch {}
+    try { if (window.renderAllNotches)  renderAllNotches(); } catch {}
+    try { if (window.renderHighlights)  renderHighlights(); } catch {}
   } catch(e) {
     gistUpdateNavBtn('error');
     syncLog(`Pull failed: ${e.message}`);

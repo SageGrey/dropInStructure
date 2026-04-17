@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "dis",
-      "runtimeExecutable": "/usr/bin/ruby",
-      "runtimeArgs": ["-e", "require 'webrick'; s = WEBrick::HTTPServer.new(:Port => 8282, :DocumentRoot => '/Users/sagevoorhees/Documents/GitHub/dropInStructure'); trap('INT') { s.shutdown }; s.start"],
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8282"],
       "port": 8282
     }
   ]
