@@ -2960,7 +2960,7 @@
       <button class="sl-filter-btn sl-filter-active" id="sl-filter-all"    onclick="slSetFilter('all')"   style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">All</button>
       <button class="sl-filter-btn"                  id="sl-filter-fl"     onclick="slSetFilter('fl')"    style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">FL only</button>
       <button class="sl-filter-btn"                  id="sl-filter-non-fl" onclick="slSetFilter('non-fl')" style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">Non-FL</button>
-      <button class="sl-filter-btn"                  id="sl-filter-starred" onclick="slSetFilter('starred')" style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">&#9733; Starred</button>
+      <button class="sl-filter-btn"                  id="sl-filter-starred" onclick="slToggleStarred()" style="background:rgba(255,254,231,0.12);border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.8);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">&#9733; Starred</button>
 
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
         <button onclick="slStartSort()" style="background:#E94D32;border:none;color:#FFFEE7;font-family:'Archivo Black',sans-serif;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;padding:8px 18px;cursor:pointer;">Sort →</button>
@@ -4453,6 +4453,7 @@
   // ── Sorted List: view + filter system ──
   let slView = 'timing'; // current top-level view
   let slFilter = 'all';  // 'all' | 'fl' | 'non-fl'
+  let slStarredOnly = false; // independent toggle, combines with slFilter
   let slSubField = null; // null = use view default | 'timing' | 'length' | 'subcategory' | 'meta' | 'none'
 
   // Subfield options available for grouping within tiles
@@ -4544,12 +4545,21 @@
 
   function slSetFilter(filter) {
     slFilter = filter;
-    document.querySelectorAll('.sl-filter-btn').forEach(el => el.classList.remove('sl-filter-active'));
-    const btn = document.getElementById('sl-filter-' + filter);
-    if (btn) btn.classList.add('sl-filter-active');
+    ['all','fl','non-fl'].forEach(k => {
+      const el = document.getElementById('sl-filter-' + k);
+      if (el) el.classList.toggle('sl-filter-active', k === filter);
+    });
     renderSortedList();
   }
   window.slSetFilter = slSetFilter;
+
+  function slToggleStarred() {
+    slStarredOnly = !slStarredOnly;
+    const btn = document.getElementById('sl-filter-starred');
+    if (btn) btn.classList.toggle('sl-filter-active', slStarredOnly);
+    renderSortedList();
+  }
+  window.slToggleStarred = slToggleStarred;
 
   /**
    * Renders the entire Sorted List tab. Loads items from storage,
@@ -4574,9 +4584,9 @@
     sortAllItems = allItems; // keep in sync
 
     // Apply filters
-    if (slFilter === 'fl')      allItems = allItems.filter(it => it.meta === 'fl');
-    if (slFilter === 'non-fl')  allItems = allItems.filter(it => it.meta !== 'fl');
-    if (slFilter === 'starred') allItems = allItems.filter(it => it.starred);
+    if (slFilter === 'fl')      allItems = allItems.filter(it => it.meta === 'fl' || FL_SUBCAT_KEYS.has(it.subcategory));
+    if (slFilter === 'non-fl')  allItems = allItems.filter(it => it.meta !== 'fl' && !FL_SUBCAT_KEYS.has(it.subcategory));
+    if (slStarredOnly)          allItems = allItems.filter(it => it.starred);
 
     const view = SL_VIEWS[slView];
     if (!view) return;
@@ -4793,7 +4803,7 @@
     if (!input) return;
     const text = (input.value || '').trim();
     if (!text) return;
-    const isFL = !!(flBox && flBox.checked);
+    const isFL = !!(flBox && flBox.checked) || slFilter === 'fl';
     const items = loadSortItems();
     const nowIso = new Date().toISOString();
     const newItem = {
@@ -4805,6 +4815,7 @@
       completedOn: todayStr(),
       completedAt: nowIso
     };
+    if (slStarredOnly) newItem.starred = true;
     items.push(newItem);
     saveSortItems(items);
     sortAllItems = items;
@@ -5183,6 +5194,9 @@
         if (view.field === 'subcategory' && FL_SUBCAT_KEYS.has(bucket.key)) newItem.meta = 'fl';
       }
       if (isFL && !newItem.meta) newItem.meta = 'fl';
+      // Inherit the active filter so new items show up in the view where they were added
+      if (slFilter === 'fl' && !newItem.meta) newItem.meta = 'fl';
+      if (slStarredOnly) newItem.starred = true;
       sortAllItems = loadSortItems();
       sortAllItems.push(newItem);
       saveSortItems(sortAllItems);
@@ -5652,7 +5666,15 @@
   let _clearConfirmTimer = null;
   function slClearCompleted() {
     sortAllItems = loadSortItems();
-    const count = sortAllItems.filter(it => it.listCompleted).length;
+    const today = todayStr();
+    // Keep FL items completed today; clear everything else that's completed
+    const shouldClear = it => {
+      if (!it.listCompleted) return false;
+      const isFL = it.meta === 'fl' || FL_SUBCAT_KEYS.has(it.subcategory);
+      if (isFL && it.completedOn === today) return false;
+      return true;
+    };
+    const count = sortAllItems.filter(shouldClear).length;
     if (count === 0) return;
     const btn = document.getElementById('sl-clear-btn');
     if (!_clearConfirmPending) {
@@ -5668,7 +5690,7 @@
       clearTimeout(_clearConfirmTimer);
       _clearConfirmPending = false;
       if (btn) { btn.textContent = 'Clear completed'; btn.style.borderColor = 'rgba(255,254,231,0.25)'; btn.style.color = 'rgba(255,254,231,0.5)'; }
-      sortAllItems = sortAllItems.filter(it => !it.listCompleted);
+      sortAllItems = sortAllItems.filter(it => !shouldClear(it));
       saveSortItems(sortAllItems);
       renderSortedList();
     }
@@ -11849,13 +11871,15 @@ function edRenderCategories() {
         <span class="ed-toggle">▾</span>
       </div>
       <div class="ed-cat-round-body" id="ed-cat-body-${ri}">
-        <div style="display:grid;grid-template-columns:1fr 120px 28px;gap:6px;padding:2px 4px 6px;">
+        <div style="display:grid;grid-template-columns:20px 1fr 120px 28px;gap:6px;padding:2px 4px 6px;">
+          <span></span>
           <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Label</span>
           <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Key</span>
           <span></span>
         </div>
         ${round.buckets.map((bucket, bi) => `
-          <div class="ed-bucket-row" style="grid-template-columns:1fr 120px 28px;">
+          <div class="ed-bucket-row ed-cat-bucket-row" draggable="true" data-round="${ri}" data-idx="${bi}" style="grid-template-columns:20px 1fr 120px 28px;">
+            <div class="ed-drag-handle" title="Drag to reorder">⠿</div>
             <input type="text" value="${bucket.label.replace(/"/g,'&quot;')}" placeholder="Label" onchange="edUpdateBucket(${ri},${bi},'label',this.value)">
             <input type="text" value="${bucket.key}" placeholder="key" style="font-size:11px;color:rgba(48,28,29,0.5);" disabled>
             <button class="ed-del-btn" onclick="edDeleteBucket(${ri},${bi})" title="Remove">×</button>
@@ -11869,7 +11893,106 @@ function edRenderCategories() {
       </div>
     </div>`}).filter(Boolean).join('');
 
-  // nothing further needed after rendering
+  edAttachCatDrag();
+}
+
+let edCatDragSrc = null;
+function edAttachCatDrag() {
+  document.querySelectorAll('.ed-cat-bucket-row[draggable]').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      edCatDragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.style.opacity = '0.4', 0);
+    });
+    row.addEventListener('dragend', () => { row.style.opacity = ''; edCatDragSrc = null; });
+    row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!edCatDragSrc || edCatDragSrc === row) return;
+      if (edCatDragSrc.dataset.round !== row.dataset.round) return;
+      const ri = parseInt(edCatDragSrc.dataset.round);
+      const srcIdx = parseInt(edCatDragSrc.dataset.idx);
+      const dstIdx = parseInt(row.dataset.idx);
+      const cats = loadCategories();
+      if (!cats[ri] || !cats[ri].buckets) return;
+      const [moved] = cats[ri].buckets.splice(srcIdx, 1);
+      cats[ri].buckets.splice(dstIdx, 0, moved);
+      saveCategories(cats);
+      if (SORT_ROUNDS[ri]) SORT_ROUNDS[ri].buckets = cats[ri].buckets;
+      edRenderCategories();
+      const body = document.getElementById('ed-cat-body-' + ri);
+      if (body) body.style.display = '';
+    });
+
+    // Mobile touch drag
+    let touchRow = null, touchStartY = 0, touchGhost = null;
+    row.addEventListener('touchstart', e => {
+      const handle = row.querySelector('.ed-drag-handle');
+      const touch = e.touches[0];
+      if (handle) {
+        const rect = handle.getBoundingClientRect();
+        if (touch.clientX < rect.left - 10 || touch.clientX > rect.right + 10 ||
+            touch.clientY < rect.top - 10 || touch.clientY > rect.bottom + 10) return;
+      }
+      touchRow = row;
+      touchStartY = touch.clientY;
+      edCatDragSrc = row;
+      touchGhost = row.cloneNode(true);
+      touchGhost.style.cssText = 'position:fixed;left:0;right:0;z-index:9999;opacity:0.85;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:#FFFEE7;' +
+        'top:' + row.getBoundingClientRect().top + 'px;width:' + row.offsetWidth + 'px;';
+      document.body.appendChild(touchGhost);
+      row.style.opacity = '0.3';
+    }, { passive: true });
+
+    row.addEventListener('touchmove', e => {
+      if (!touchRow || !touchGhost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dy = touch.clientY - touchStartY;
+      touchGhost.style.top = (touchRow.getBoundingClientRect().top + dy) + 'px';
+      document.querySelectorAll('.ed-cat-bucket-row').forEach(r => r.style.borderTop = '');
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-cat-bucket-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow && targetRow.dataset.round === touchRow.dataset.round) {
+        targetRow.style.borderTop = '3px solid #F7B338';
+      }
+    }, { passive: false });
+
+    row.addEventListener('touchend', e => {
+      if (!touchRow) return;
+      const touch = e.changedTouches[0];
+      document.querySelectorAll('.ed-cat-bucket-row').forEach(r => r.style.borderTop = '');
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      touchRow.style.opacity = '';
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-cat-bucket-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow && targetRow.dataset.round === touchRow.dataset.round) {
+        const ri = parseInt(touchRow.dataset.round);
+        const srcIdx = parseInt(touchRow.dataset.idx);
+        const dstIdx = parseInt(targetRow.dataset.idx);
+        const cats = loadCategories();
+        if (cats[ri] && cats[ri].buckets) {
+          const [moved] = cats[ri].buckets.splice(srcIdx, 1);
+          cats[ri].buckets.splice(dstIdx, 0, moved);
+          saveCategories(cats);
+          if (SORT_ROUNDS[ri]) SORT_ROUNDS[ri].buckets = cats[ri].buckets;
+          edRenderCategories();
+          const body = document.getElementById('ed-cat-body-' + ri);
+          if (body) body.style.display = '';
+        }
+      }
+      touchRow = null;
+      edCatDragSrc = null;
+    });
+
+    row.addEventListener('touchcancel', () => {
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      if (touchRow) touchRow.style.opacity = '';
+      touchRow = null;
+      edCatDragSrc = null;
+      document.querySelectorAll('.ed-cat-bucket-row').forEach(r => r.style.borderTop = '');
+    });
+  });
 }
 
 function edSaveWorkName(val) {
@@ -11927,10 +12050,31 @@ function edDeleteBucket(ri, bi) {
   if (!cats[ri] || !cats[ri].buckets) return;
   const bucket = cats[ri].buckets[bi];
   if (!bucket) return;
-  if (!confirm(`Remove "${bucket.label}" from this group? Items already sorted here keep their value but won't appear in a named group.`)) return;
+  if (!confirm(`Remove "${bucket.label}" from this group? Any items tagged with it will move to Unsorted for this criteria.`)) return;
   cats[ri].buckets.splice(bi, 1);
   saveCategories(cats);
   if (SORT_ROUNDS[ri]) SORT_ROUNDS[ri].buckets = cats[ri].buckets;
+
+  // Move items tagged with this bucket to Unsorted (clear the field)
+  try {
+    const field = SORT_ROUNDS[ri] && SORT_ROUNDS[ri].field;
+    if (field && typeof loadSortItems === 'function') {
+      const items = loadSortItems();
+      let changed = false;
+      items.forEach(it => {
+        if (it[field] === bucket.key) {
+          delete it[field];
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveSortItems(items);
+        if (typeof sortAllItems !== 'undefined') sortAllItems = items;
+        if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+      }
+    }
+  } catch(e) { console.error(e); }
+
   edRenderCategories();
   // Re-open the round
   const body = document.getElementById('ed-cat-body-' + ri);
@@ -11975,13 +12119,15 @@ function edRenderIdeasCategories() {
         <span class="ed-toggle">▾</span>
       </div>
       <div class="ed-cat-round-body" id="ed-ideas-cat-body-${ri}">
-        <div style="display:grid;grid-template-columns:1fr 120px 28px;gap:6px;padding:2px 4px 6px;">
+        <div style="display:grid;grid-template-columns:20px 1fr 120px 28px;gap:6px;padding:2px 4px 6px;">
+          <span></span>
           <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Label</span>
           <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Key</span>
           <span></span>
         </div>
         ${round.buckets.map((bucket, bi) => `
-          <div class="ed-bucket-row" style="grid-template-columns:1fr 120px 28px;">
+          <div class="ed-bucket-row ed-ideas-cat-bucket-row" draggable="true" data-round="${ri}" data-idx="${bi}" style="grid-template-columns:20px 1fr 120px 28px;">
+            <div class="ed-drag-handle" title="Drag to reorder">⠿</div>
             <input type="text" value="${bucket.label.replace(/"/g,'&quot;')}" placeholder="Label" onchange="edUpdateIdeasBucket(${ri},${bi},'label',this.value)">
             <input type="text" value="${bucket.key}" placeholder="key" style="font-size:11px;color:rgba(48,28,29,0.5);" disabled>
             <button class="ed-del-btn" onclick="edDeleteIdeasBucket(${ri},${bi})" title="Remove">×</button>
@@ -11994,6 +12140,111 @@ function edRenderIdeasCategories() {
         </div>
       </div>
     </div>`}).filter(Boolean).join('');
+  edAttachIdeasCatDrag();
+}
+
+function ideasFieldForRound(cats, ri) {
+  const id = cats[ri] && cats[ri].id;
+  if (!id) return null;
+  const r = SORT_ROUNDS.find(r => r.id === id);
+  return r ? r.field : null;
+}
+
+let edIdeasCatDragSrc = null;
+function edAttachIdeasCatDrag() {
+  document.querySelectorAll('.ed-ideas-cat-bucket-row[draggable]').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      edIdeasCatDragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.style.opacity = '0.4', 0);
+    });
+    row.addEventListener('dragend', () => { row.style.opacity = ''; edIdeasCatDragSrc = null; });
+    row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!edIdeasCatDragSrc || edIdeasCatDragSrc === row) return;
+      if (edIdeasCatDragSrc.dataset.round !== row.dataset.round) return;
+      const ri = parseInt(edIdeasCatDragSrc.dataset.round);
+      const srcIdx = parseInt(edIdeasCatDragSrc.dataset.idx);
+      const dstIdx = parseInt(row.dataset.idx);
+      const cats = loadIdeasCategories();
+      if (!cats[ri] || !cats[ri].buckets) return;
+      const [moved] = cats[ri].buckets.splice(srcIdx, 1);
+      cats[ri].buckets.splice(dstIdx, 0, moved);
+      saveIdeasCategories(cats);
+      edRenderIdeasCategories();
+      const body = document.getElementById('ed-ideas-cat-body-' + ri);
+      if (body) body.style.display = '';
+    });
+
+    // Mobile touch drag
+    let touchRow = null, touchStartY = 0, touchGhost = null;
+    row.addEventListener('touchstart', e => {
+      const handle = row.querySelector('.ed-drag-handle');
+      const touch = e.touches[0];
+      if (handle) {
+        const rect = handle.getBoundingClientRect();
+        if (touch.clientX < rect.left - 10 || touch.clientX > rect.right + 10 ||
+            touch.clientY < rect.top - 10 || touch.clientY > rect.bottom + 10) return;
+      }
+      touchRow = row;
+      touchStartY = touch.clientY;
+      edIdeasCatDragSrc = row;
+      touchGhost = row.cloneNode(true);
+      touchGhost.style.cssText = 'position:fixed;left:0;right:0;z-index:9999;opacity:0.85;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:#FFFEE7;' +
+        'top:' + row.getBoundingClientRect().top + 'px;width:' + row.offsetWidth + 'px;';
+      document.body.appendChild(touchGhost);
+      row.style.opacity = '0.3';
+    }, { passive: true });
+
+    row.addEventListener('touchmove', e => {
+      if (!touchRow || !touchGhost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dy = touch.clientY - touchStartY;
+      touchGhost.style.top = (touchRow.getBoundingClientRect().top + dy) + 'px';
+      document.querySelectorAll('.ed-ideas-cat-bucket-row').forEach(r => r.style.borderTop = '');
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-ideas-cat-bucket-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow && targetRow.dataset.round === touchRow.dataset.round) {
+        targetRow.style.borderTop = '3px solid #F7B338';
+      }
+    }, { passive: false });
+
+    row.addEventListener('touchend', e => {
+      if (!touchRow) return;
+      const touch = e.changedTouches[0];
+      document.querySelectorAll('.ed-ideas-cat-bucket-row').forEach(r => r.style.borderTop = '');
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      touchRow.style.opacity = '';
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-ideas-cat-bucket-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow && targetRow.dataset.round === touchRow.dataset.round) {
+        const ri = parseInt(touchRow.dataset.round);
+        const srcIdx = parseInt(touchRow.dataset.idx);
+        const dstIdx = parseInt(targetRow.dataset.idx);
+        const cats = loadIdeasCategories();
+        if (cats[ri] && cats[ri].buckets) {
+          const [moved] = cats[ri].buckets.splice(srcIdx, 1);
+          cats[ri].buckets.splice(dstIdx, 0, moved);
+          saveIdeasCategories(cats);
+          edRenderIdeasCategories();
+          const body = document.getElementById('ed-ideas-cat-body-' + ri);
+          if (body) body.style.display = '';
+        }
+      }
+      touchRow = null;
+      edIdeasCatDragSrc = null;
+    });
+
+    row.addEventListener('touchcancel', () => {
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      if (touchRow) touchRow.style.opacity = '';
+      touchRow = null;
+      edIdeasCatDragSrc = null;
+      document.querySelectorAll('.ed-ideas-cat-bucket-row').forEach(r => r.style.borderTop = '');
+    });
+  });
 }
 
 function edToggleIdeasCatRound(ri, headerEl) {
@@ -12036,9 +12287,30 @@ function edDeleteIdeasBucket(ri, bi) {
   const cats = loadIdeasCategories();
   if (!cats[ri] || !cats[ri].buckets) return;
   const bucket = cats[ri].buckets[bi];
-  if (!confirm(`Remove "${bucket.label}" from Ideas categories?`)) return;
+  if (!bucket) return;
+  if (!confirm(`Remove "${bucket.label}" from Ideas categories? Any ideas tagged with it will move to Unsorted for this criteria.`)) return;
   cats[ri].buckets.splice(bi, 1);
   saveIdeasCategories(cats);
+
+  // Move ideas tagged with this bucket to Unsorted (clear the field)
+  try {
+    const field = ideasFieldForRound(cats, ri);
+    if (field && typeof loadIdeasItems === 'function') {
+      const items = loadIdeasItems();
+      let changed = false;
+      items.forEach(it => {
+        if (it[field] === bucket.key) {
+          delete it[field];
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveIdeasItems(items);
+        if (typeof renderIdeas === 'function') try { renderIdeas(); } catch(e) {}
+      }
+    }
+  } catch(e) { console.error(e); }
+
   edRenderIdeasCategories();
   const body = document.getElementById('ed-ideas-cat-body-' + ri);
   if (body) body.style.display = '';
