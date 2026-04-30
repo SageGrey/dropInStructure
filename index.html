@@ -2954,6 +2954,7 @@
       <button class="sl-view-tile sl-active" id="sl-tab-timing"   onclick="slSetView('timing')">Timing</button>
       <button class="sl-view-tile"           id="sl-tab-length"   onclick="slSetView('length')">Length</button>
       <button class="sl-view-tile"           id="sl-tab-category" onclick="slSetView('category')">Category</button>
+      <button class="sl-view-tile"           id="sl-tab-age"      onclick="slSetView('age')">Oldest</button>
 
       <div style="width:1px;height:24px;background:rgba(255,254,231,0.15);margin:0 4px;flex-shrink:0;"></div>
 
@@ -3480,6 +3481,26 @@
   function saveSortItems(items) {
     try { localStorage.setItem(SORT_KEY, JSON.stringify(items)); } catch {}
     if (typeof gistMarkDirty === 'function') gistMarkDirty();
+  }
+
+  // Age in whole days since item creation. Falls back to extracting the
+  // ms-timestamp from the id (which is created via Date.now() + random).
+  function itemAgeDays(item) {
+    if (!item) return 0;
+    let ts = null;
+    if (item.createdAt) {
+      const d = new Date(item.createdAt).getTime();
+      if (!isNaN(d)) ts = d;
+    }
+    if (ts == null && item.id != null) {
+      if (typeof item.id === 'number') ts = Math.floor(item.id);
+      else if (typeof item.id === 'string') {
+        const m = item.id.match(/(\d{10,})/);
+        if (m) ts = parseInt(m[1], 10);
+      }
+    }
+    if (!ts || ts > Date.now()) return 0;
+    return Math.floor((Date.now() - ts) / 86400000);
   }
 
   // Round definitions
@@ -4512,6 +4533,29 @@
       subField: 'timing',
       subLabel: (item) => item.timing || null,
     },
+    age: {
+      field: '_age',
+      buckets: [
+        { key: 'old',    label: '30+ days',   accent: '#E94D32' },
+        { key: 'aging',  label: '15-30 days', accent: '#c43520' },
+        { key: 'week2',  label: '8-14 days',  accent: '#F7B338' },
+        { key: 'week1',  label: '4-7 days',   accent: '#5b8bd4' },
+        { key: 'recent', label: '1-3 days',   accent: '#7FA497' },
+        { key: 'today',  label: 'Today',      accent: 'rgba(255,254,231,0.2)' },
+      ],
+      bucketOf: (item) => {
+        const d = itemAgeDays(item);
+        if (d >= 30) return 'old';
+        if (d >= 15) return 'aging';
+        if (d >= 8)  return 'week2';
+        if (d >= 4)  return 'week1';
+        if (d >= 1)  return 'recent';
+        return 'today';
+      },
+      sortBy: (a, b) => itemAgeDays(b) - itemAgeDays(a), // oldest first
+      subField: 'subcategory',
+      subLabel: (item) => item.subcategory || (item.meta ? `(${item.meta})` : null),
+    },
     energy: {
       field: 'energy',
       buckets: [
@@ -4623,14 +4667,19 @@
 
     // Exclude completed items from the bucket tiles — they live in the Completed tile only.
     const activeItems   = allItems.filter(it => !it.listCompleted);
-    const sortedItems   = activeItems.filter(it => it[view.field]);
-    const unsortedItems = activeItems.filter(it => !it[view.field]);
+    // If the view supplies a bucketOf() (e.g. age view), every item is sortable.
+    const bucketOf = view.bucketOf;
+    const sortedItems   = bucketOf ? activeItems : activeItems.filter(it => it[view.field]);
+    const unsortedItems = bucketOf ? []          : activeItems.filter(it => !it[view.field]);
 
     el.innerHTML = '';
 
     // Always render all buckets (even empty) + unsorted tile
     buckets.forEach(bucket => {
-      const items = sortedItems.filter(it => it[view.field] === bucket.key);
+      let items = bucketOf
+        ? sortedItems.filter(it => bucketOf(it) === bucket.key)
+        : sortedItems.filter(it => it[view.field] === bucket.key);
+      if (view.sortBy) items = items.slice().sort(view.sortBy);
       el.appendChild(buildBucketCard(bucket, items, view));
     });
 
@@ -5423,6 +5472,15 @@
       meta.className = 'sl-item-meta';
       meta.textContent = item.completedOn + (item.completedMins ? ' · ' + item.completedMins + 'm' : '');
       txtWrap.appendChild(meta);
+    } else if (!item.listCompleted) {
+      const days = itemAgeDays(item);
+      if (days >= 1) {
+        const ageMeta = document.createElement('div');
+        ageMeta.className = 'sl-item-meta';
+        ageMeta.textContent = days + 'd';
+        ageMeta.title = days + ' day' + (days === 1 ? '' : 's') + ' on the list';
+        txtWrap.appendChild(ageMeta);
+      }
     }
 
     // Star button
