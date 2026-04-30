@@ -4594,26 +4594,16 @@
     // Get buckets — for category view build dynamically from ALL known subcategories
     let buckets = view.buckets;
     if (!buckets) {
-      // All known subcategory keys across all rounds
-      const allSubcats = [
-        { key: 'fl-admin',      label: 'FL Admin',      accent: '#5b8bd4' },
-        { key: 'se-firemap',    label: 'SE FireMap',    accent: '#4a7abf' },
-        { key: 'birdlocale',    label: 'Birdlocale',    accent: '#3969aa' },
-        { key: 'bobscapes',     label: 'Bobscapes',     accent: '#2d5995' },
-        { key: 'aquatics',      label: 'Aquatics',      accent: '#224880' },
-        { key: 'chiram',        label: 'CHIRAM',        accent: '#1a3870' },
-        { key: 'anchor',        label: 'ANCHOR',        accent: '#122860' },
-        { key: 'daily-living',  label: 'Daily Living',  accent: '#d4aa4e' },
-        { key: 'finance',       label: 'Finance',       accent: '#c89a20' },
-        { key: 'health',        label: 'Health',        accent: '#e0b840' },
-        { key: 'fejj-world',    label: 'Fejj World',    accent: '#b88820' },
-        { key: 'gift-giving',   label: 'Gift Giving',   accent: '#c8a030' },
-        { key: 'moon-kiosk',    label: 'Moon/Kiosk',    accent: '#E94D32' },
-        { key: 'carts',         label: 'Carts',         accent: '#c43520' },
-        { key: '26-sites',      label: '26 Sites',      accent: '#a82a18' },
-        { key: 'scott-jackson', label: 'Scott Jackson', accent: '#c43520' },
-      ];
-      // Add any unknown subcategories dynamically
+      // Build live from SORT_ROUNDS so editor changes (add/delete/rename) propagate
+      const allSubcats = SORT_ROUNDS
+        .filter(r => r.field === 'subcategory')
+        .flatMap(r => r.buckets.map(b => ({
+          key: b.key,
+          label: b.label,
+          accent: b.color || '#888',
+          meta: b.meta
+        })));
+      // Add any orphan subcategories still tagged on items but no longer defined
       const knownKeys = new Set(allSubcats.map(b => b.key));
       allItems.forEach(it => {
         if (it.subcategory && !knownKeys.has(it.subcategory)) {
@@ -4623,11 +4613,9 @@
       });
       // Apply filter to which categories are shown
       if (slFilter === 'fl') {
-        const flKeys = new Set(['fl-admin','se-firemap','birdlocale','bobscapes','aquatics','chiram','anchor']);
-        buckets = allSubcats.filter(b => flKeys.has(b.key));
+        buckets = allSubcats.filter(b => FL_SUBCAT_KEYS.has(b.key));
       } else if (slFilter === 'non-fl') {
-        const flKeys = new Set(['fl-admin','se-firemap','birdlocale','bobscapes','aquatics','chiram','anchor']);
-        buckets = allSubcats.filter(b => !flKeys.has(b.key));
+        buckets = allSubcats.filter(b => !FL_SUBCAT_KEYS.has(b.key));
       } else {
         buckets = allSubcats;
       }
@@ -4666,8 +4654,15 @@
   let _dragItemId = null;
   let _dragSourceView = null;
 
-  // FL subcategory keys — items in these buckets auto-get meta:'fl'
-  const FL_SUBCAT_KEYS = new Set(['fl-admin','se-firemap','birdlocale','bobscapes','aquatics','chiram','anchor']);
+  // FL subcategory keys — items in these buckets auto-get meta:'fl'.
+  // Dynamic: queries SORT_ROUNDS each call so editor add/delete propagates.
+  const FL_SUBCAT_KEYS = {
+    has(key) {
+      if (!key) return false;
+      const r = SORT_ROUNDS.find(r => r.id === 'fl-sub');
+      return !!(r && r.buckets.some(b => b.key === key));
+    }
+  };
 
   function slUpdateItemField(itemId, field, value) {
     sortAllItems = loadSortItems();
@@ -11830,14 +11825,41 @@ function saveCategories(cats) {
       if (!SORT_ROUNDS[i]) return;
       if (r.label) SORT_ROUNDS[i].label = r.label;
       if (Array.isArray(r.buckets)) {
+        // Backfill meta for legacy buckets that were added before meta was tracked
+        const roundId = SORT_ROUNDS[i].id;
+        const fallbackMeta = roundId === 'fl-sub' ? 'fl'
+                           : roundId === 'personal-sub' ? 'personal'
+                           : roundId === 'projects-sub' ? 'projects'
+                           : undefined;
         // Replace the whole buckets array with saved version (handles adds/deletes)
         SORT_ROUNDS[i].buckets = r.buckets.map(b => ({
           key: b.key, label: b.label,
           color: b.color || '#888888', textColor: b.textColor || '#FFFEE7',
-          meta: b.meta
+          meta: b.meta || fallbackMeta
         }));
       }
     });
+  } catch(e) {}
+})();
+
+// One-time backfill: items that were tagged with a custom FL/Personal/Projects
+// subcategory before bucket-meta was tracked end up with no meta, so the FL
+// filter and billing trigger ignore them. Fix any whose subcategory now maps
+// to a bucket with a known meta.
+(function() {
+  try {
+    const items = JSON.parse(localStorage.getItem('sortAllItems_v2') || '[]');
+    if (!Array.isArray(items)) return;
+    let changed = false;
+    items.forEach(it => {
+      if (!it.subcategory || it.meta) return;
+      for (const r of SORT_ROUNDS) {
+        if (r.field !== 'subcategory') continue;
+        const bucket = r.buckets.find(b => b.key === it.subcategory);
+        if (bucket && bucket.meta) { it.meta = bucket.meta; changed = true; break; }
+      }
+    });
+    if (changed) localStorage.setItem('sortAllItems_v2', JSON.stringify(items));
   } catch(e) {}
 })();
 
@@ -12034,7 +12056,14 @@ function edAddBucket(ri) {
     setTimeout(() => inp.style.borderColor = '', 1200);
     return;
   }
+  // Inherit meta from round (so FL/Personal/Projects buckets behave correctly)
+  const roundId = cats[ri].id || (SORT_ROUNDS[ri] && SORT_ROUNDS[ri].id);
+  const meta = roundId === 'fl-sub' ? 'fl'
+             : roundId === 'personal-sub' ? 'personal'
+             : roundId === 'projects-sub' ? 'projects'
+             : undefined;
   const newBucket = { key, label, color: '#888888', textColor: '#FFFEE7' };
+  if (meta) newBucket.meta = meta;
   cats[ri].buckets.push(newBucket);
   saveCategories(cats);
   if (SORT_ROUNDS[ri]) SORT_ROUNDS[ri].buckets = cats[ri].buckets;
