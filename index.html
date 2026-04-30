@@ -2008,6 +2008,7 @@
   <button onclick="openBillableTab(this)">Billable</button>
   <button onclick="showSection('sorting', this)" style="display:none">Sort</button>
   <button onclick="showSection('sortedlist', this)" id="sorted-list-tab">Sorted List</button>
+  <button onclick="showSection('conversations', this)" id="conversations-tab">Convos</button>
   <button onclick="showSection('ideas', this)" id="ideas-tab">Ideas</button>
   <button onclick="showSection('pastlogs', this)" id="past-logs-tab">Past Logs</button>
   <button onclick="showSection('editor', this)" id="editor-tab">✏ Edit</button>
@@ -3026,6 +3027,17 @@
     </div>
   </div>
 
+  <!-- ══ CONVERSATIONS ══ -->
+  <div id="conversations" class="section">
+    <div style="padding: 24px 16px;">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
+        <h2 style="font-family:'Archivo Black',sans-serif;font-size:22px;color:#FFFEE7;margin:0;letter-spacing:0.04em;text-transform:uppercase;">Conversations</h2>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.4);letter-spacing:0.08em;">Things to bring up next time you talk</span>
+      </div>
+      <div id="conversations-content" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;"></div>
+    </div>
+  </div>
+
   <!-- ══ PAST LOGS ══ -->
   <div id="pastlogs" class="section">
     <style>
@@ -3293,6 +3305,7 @@
       <button class="ed-tab" onclick="edShowPane('logs', this)">Logs</button>
       <button class="ed-tab" onclick="edShowPane('categories', this)">Categories</button>
       <button class="ed-tab" onclick="edShowPane('ideas-cats', this)">Ideas Categories</button>
+      <button class="ed-tab" onclick="edShowPane('people', this)">People</button>
     </div>
 
     <!-- ROUTINES PANE -->
@@ -3335,6 +3348,13 @@
         <button class="ed-reset-btn" onclick="edResetIdeasCategories()">Reset to Match Sorted List</button>
         <span id="ed-ideas-cat-save-msg" style="font-family:'Space Mono',monospace;font-size:11px;color:#7FA497;letter-spacing:0.1em;opacity:0;transition:opacity 0.4s;"></span>
       </div>
+    </div>
+
+    <div id="ed-pane-people" class="ed-pane">
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.5);letter-spacing:0.08em;margin-bottom:12px;">
+        People shown as tiles in the Conversations tab. Drag the ⠿ handle to reorder. Deleting a person sends their items to "Unsorted".
+      </div>
+      <div id="ed-people-content"></div>
     </div>
   </div>
 
@@ -3455,6 +3475,7 @@
     if (id === 'notches')    { try { renderAllNotches(); } catch(e) { console.error(e); } }
     if (id === 'theoryweek') setTimeout(() => { if (window.twRenderAll) { try { window.twRenderAll(); } catch(e) { console.error(e); } } }, 50);
     if (id === 'ideas')  { try { renderIdeas(); } catch(e) { console.error(e); } }
+    if (id === 'conversations') { try { renderConversations(); } catch(e) { console.error(e); } }
     if (id === 'editor') { try { edRenderRoutines(); } catch(e) { console.error(e); } }
     const arrow = document.getElementById('puzzle-hint-arrow');
     if (arrow) arrow.style.display = id === 'routines' ? '' : 'none';
@@ -11510,6 +11531,7 @@ function edShowPane(name, btn) {
   if (name === 'logs') edRenderLogs();
   if (name === 'categories') edRenderCategories();
   if (name === 'ideas-cats') edRenderIdeasCategories();
+  if (name === 'people') edRenderPeople();
 }
 
 // ── Drag-to-reorder state ──
@@ -12423,6 +12445,324 @@ function edResetIdeasCategories() {
 document.addEventListener('DOMContentLoaded', function() {
   // Editor renders lazily when its tab is clicked
 });
+
+// ══════════════════════════════════════════
+// ── CONVERSATIONS ──
+// ══════════════════════════════════════════
+const CONV_PEOPLE_KEY = 'conversation_people_v1';
+const CONV_ITEMS_KEY  = 'conversation_items_v1';
+const _defaultConvPeople = [
+  { key: 'rose',       label: 'Rose' },
+  { key: 'bridgett',   label: 'Bridgett' },
+  { key: 'josselyn',   label: 'Josselyn' },
+  { key: 'fejj-world', label: 'Fejj World' },
+];
+
+function loadConvPeople() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CONV_PEOPLE_KEY));
+    if (Array.isArray(saved) && saved.length > 0) return saved;
+  } catch {}
+  return JSON.parse(JSON.stringify(_defaultConvPeople));
+}
+function saveConvPeople(people) {
+  try { localStorage.setItem(CONV_PEOPLE_KEY, JSON.stringify(people)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+function loadConvItems() {
+  try { return JSON.parse(localStorage.getItem(CONV_ITEMS_KEY) || '[]'); } catch { return []; }
+}
+function saveConvItems(items) {
+  try { localStorage.setItem(CONV_ITEMS_KEY, JSON.stringify(items)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+
+function renderConversations() {
+  const el = document.getElementById('conversations-content');
+  if (!el) return;
+  const people = loadConvPeople();
+  const items = loadConvItems();
+  el.innerHTML = '';
+
+  const knownKeys = new Set(people.map(p => p.key));
+  const orphans = items.filter(it => it.person && !knownKeys.has(it.person));
+
+  people.forEach(person => {
+    const personItems = items.filter(it => it.person === person.key);
+    el.appendChild(buildConvTile(person, personItems));
+  });
+
+  // Unsorted tile for orphan items (deleted person)
+  if (orphans.length > 0) {
+    el.appendChild(buildConvTile({ key: '__unsorted', label: 'Unsorted' }, orphans));
+  }
+}
+window.renderConversations = renderConversations;
+
+function buildConvTile(person, items) {
+  const card = document.createElement('div');
+  card.className = 'sl-bucket-card';
+  card.dataset.bucketKey = person.key;
+
+  const hdr = document.createElement('div');
+  hdr.className = 'sl-bucket-header';
+  hdr.innerHTML = `<span class="sl-hdr-text">${(person.label || person.key).toUpperCase()}</span>`;
+  card.appendChild(hdr);
+
+  // Active first, completed below
+  const active = items.filter(it => !it.completed);
+  const done   = items.filter(it => it.completed);
+  [...active, ...done].forEach(item => card.appendChild(buildConvItemRow(item)));
+
+  // Add row (skip for orphan unsorted bucket)
+  if (person.key !== '__unsorted') {
+    const addRow = document.createElement('div');
+    addRow.style.cssText = 'padding:10px 16px;border-top:1px solid rgba(48,28,29,0.08);display:flex;gap:6px;';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = 'Add a thought…';
+    inp.style.cssText = "flex:1;border:1px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:5px 8px;outline:none;";
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+';
+    addBtn.style.cssText = "background:#301C1D;border:none;color:#FFFEE7;font-family:'Archivo Black',sans-serif;font-size:14px;padding:5px 12px;cursor:pointer;";
+    const doAdd = () => {
+      const text = inp.value.trim();
+      if (!text) return;
+      const items = loadConvItems();
+      items.push({ id: Date.now() + Math.random(), text, person: person.key, completed: false });
+      saveConvItems(items);
+      inp.value = '';
+      renderConversations();
+    };
+    addBtn.onclick = doAdd;
+    inp.onkeydown = e => { if (e.key === 'Enter') doAdd(); };
+    addRow.appendChild(inp);
+    addRow.appendChild(addBtn);
+    card.appendChild(addRow);
+  }
+  return card;
+}
+
+function buildConvItemRow(item) {
+  const row = document.createElement('div');
+  row.className = 'sl-item-row';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!item.completed;
+  cb.style.flexShrink = '0';
+  cb.addEventListener('change', () => {
+    const items = loadConvItems();
+    const it = items.find(x => x.id == item.id);
+    if (it) { it.completed = cb.checked; saveConvItems(items); renderConversations(); }
+  });
+
+  const txtWrap = document.createElement('div');
+  txtWrap.style.cssText = 'flex:1;min-width:0;';
+  const txt = document.createElement('div');
+  txt.className = 'sl-item-text' + (item.completed ? ' sl-done' : '');
+  txt.textContent = item.text;
+  txt.title = 'Double-click to edit';
+  txt.style.cursor = 'text';
+  txt.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    const editInp = document.createElement('input');
+    editInp.type = 'text';
+    editInp.value = item.text;
+    editInp.style.cssText = "width:100%;background:#FFFEE7;border:1.5px solid #301C1D;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:3px 6px;outline:none;box-sizing:border-box;";
+    txt.replaceWith(editInp);
+    editInp.focus(); editInp.select();
+    const commit = () => {
+      const newText = editInp.value.trim();
+      if (newText && newText !== item.text) {
+        const items = loadConvItems();
+        const it = items.find(x => x.id == item.id);
+        if (it) { it.text = newText; saveConvItems(items); }
+      }
+      renderConversations();
+    };
+    editInp.addEventListener('blur', commit);
+    editInp.addEventListener('keydown', e2 => {
+      if (e2.key === 'Enter') editInp.blur();
+      if (e2.key === 'Escape') renderConversations();
+    });
+  });
+  txtWrap.appendChild(txt);
+
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '✕';
+  delBtn.title = 'Delete';
+  delBtn.style.cssText = 'background:none;border:none;color:rgba(48,28,29,0.2);font-size:13px;cursor:pointer;padding:0 4px;flex-shrink:0;line-height:1;';
+  delBtn.onmouseover = () => delBtn.style.color = '#E94D32';
+  delBtn.onmouseout  = () => delBtn.style.color = 'rgba(48,28,29,0.2)';
+  delBtn.onclick = () => {
+    const items = loadConvItems().filter(x => x.id != item.id);
+    saveConvItems(items);
+    renderConversations();
+  };
+
+  row.appendChild(cb);
+  row.appendChild(txtWrap);
+  row.appendChild(delBtn);
+  return row;
+}
+
+// ── People editor (Edit tab pane) ──
+function edRenderPeople() {
+  const wrap = document.getElementById('ed-people-content');
+  if (!wrap) return;
+  const people = loadConvPeople();
+
+  wrap.innerHTML = `
+    <div class="ed-cat-round">
+      <div class="ed-cat-round-body" style="display:block;">
+        <div style="display:grid;grid-template-columns:20px 1fr 120px 28px;gap:6px;padding:2px 4px 6px;">
+          <span></span>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Name</span>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Key</span>
+          <span></span>
+        </div>
+        ${people.map((p, pi) => `
+          <div class="ed-bucket-row ed-people-row" draggable="true" data-idx="${pi}" style="grid-template-columns:20px 1fr 120px 28px;">
+            <div class="ed-drag-handle" title="Drag to reorder">⠿</div>
+            <input type="text" value="${(p.label || '').replace(/"/g,'&quot;')}" placeholder="Name" onchange="edUpdatePerson(${pi}, this.value)">
+            <input type="text" value="${p.key}" placeholder="key" style="font-size:11px;color:rgba(48,28,29,0.5);" disabled>
+            <button class="ed-del-btn" onclick="edDeletePerson(${pi})" title="Remove">×</button>
+          </div>`).join('')}
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(48,28,29,0.1);">
+          <input type="text" id="ed-new-person" placeholder="New person's name"
+            style="flex:1;border:1px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:5px 8px;outline:none;"
+            onkeydown="if(event.key==='Enter')edAddPerson()">
+          <button class="ed-add-btn" onclick="edAddPerson()">+ Add</button>
+        </div>
+      </div>
+    </div>`;
+  edAttachPeopleDrag();
+}
+window.edRenderPeople = edRenderPeople;
+
+function edUpdatePerson(pi, value) {
+  const people = loadConvPeople();
+  if (!people[pi]) return;
+  people[pi].label = value;
+  saveConvPeople(people);
+  if (typeof renderConversations === 'function') try { renderConversations(); } catch(e) {}
+}
+window.edUpdatePerson = edUpdatePerson;
+
+function edAddPerson() {
+  const inp = document.getElementById('ed-new-person');
+  if (!inp) return;
+  const label = inp.value.trim();
+  if (!label) { inp.focus(); return; }
+  const key = label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const people = loadConvPeople();
+  if (people.some(p => p.key === key)) {
+    inp.style.borderColor = '#E94D32';
+    setTimeout(() => inp.style.borderColor = '', 1200);
+    return;
+  }
+  people.push({ key, label });
+  saveConvPeople(people);
+  inp.value = '';
+  edRenderPeople();
+  if (typeof renderConversations === 'function') try { renderConversations(); } catch(e) {}
+}
+window.edAddPerson = edAddPerson;
+
+function edDeletePerson(pi) {
+  const people = loadConvPeople();
+  const person = people[pi];
+  if (!person) return;
+  if (!confirm(`Remove "${person.label}"? Their conversation items will move to Unsorted.`)) return;
+  people.splice(pi, 1);
+  saveConvPeople(people);
+  // Items keep their .person key, but it will fall into the Unsorted tile
+  // (which renders any items whose person is no longer in the people list).
+  edRenderPeople();
+  if (typeof renderConversations === 'function') try { renderConversations(); } catch(e) {}
+}
+window.edDeletePerson = edDeletePerson;
+
+let edPeopleDragSrc = null;
+function edAttachPeopleDrag() {
+  document.querySelectorAll('.ed-people-row[draggable]').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      edPeopleDragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.style.opacity = '0.4', 0);
+    });
+    row.addEventListener('dragend', () => { row.style.opacity = ''; edPeopleDragSrc = null; });
+    row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!edPeopleDragSrc || edPeopleDragSrc === row) return;
+      const srcIdx = parseInt(edPeopleDragSrc.dataset.idx);
+      const dstIdx = parseInt(row.dataset.idx);
+      const people = loadConvPeople();
+      const [moved] = people.splice(srcIdx, 1);
+      people.splice(dstIdx, 0, moved);
+      saveConvPeople(people);
+      edRenderPeople();
+      if (typeof renderConversations === 'function') try { renderConversations(); } catch(e) {}
+    });
+
+    // Mobile touch drag
+    let touchRow = null, touchStartY = 0, touchGhost = null;
+    row.addEventListener('touchstart', e => {
+      const handle = row.querySelector('.ed-drag-handle');
+      const touch = e.touches[0];
+      if (handle) {
+        const rect = handle.getBoundingClientRect();
+        if (touch.clientX < rect.left - 10 || touch.clientX > rect.right + 10 ||
+            touch.clientY < rect.top - 10 || touch.clientY > rect.bottom + 10) return;
+      }
+      touchRow = row; touchStartY = touch.clientY; edPeopleDragSrc = row;
+      touchGhost = row.cloneNode(true);
+      touchGhost.style.cssText = 'position:fixed;left:0;right:0;z-index:9999;opacity:0.85;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:#FFFEE7;' +
+        'top:' + row.getBoundingClientRect().top + 'px;width:' + row.offsetWidth + 'px;';
+      document.body.appendChild(touchGhost);
+      row.style.opacity = '0.3';
+    }, { passive: true });
+    row.addEventListener('touchmove', e => {
+      if (!touchRow || !touchGhost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dy = touch.clientY - touchStartY;
+      touchGhost.style.top = (touchRow.getBoundingClientRect().top + dy) + 'px';
+      document.querySelectorAll('.ed-people-row').forEach(r => r.style.borderTop = '');
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-people-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow) targetRow.style.borderTop = '3px solid #F7B338';
+    }, { passive: false });
+    row.addEventListener('touchend', e => {
+      if (!touchRow) return;
+      const touch = e.changedTouches[0];
+      document.querySelectorAll('.ed-people-row').forEach(r => r.style.borderTop = '');
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      touchRow.style.opacity = '';
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-people-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow) {
+        const srcIdx = parseInt(touchRow.dataset.idx);
+        const dstIdx = parseInt(targetRow.dataset.idx);
+        const people = loadConvPeople();
+        const [moved] = people.splice(srcIdx, 1);
+        people.splice(dstIdx, 0, moved);
+        saveConvPeople(people);
+        edRenderPeople();
+        if (typeof renderConversations === 'function') try { renderConversations(); } catch(e) {}
+      }
+      touchRow = null; edPeopleDragSrc = null;
+    });
+    row.addEventListener('touchcancel', () => {
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      if (touchRow) touchRow.style.opacity = '';
+      touchRow = null; edPeopleDragSrc = null;
+      document.querySelectorAll('.ed-people-row').forEach(r => r.style.borderTop = '');
+    });
+  });
+}
 
 </script>
 
