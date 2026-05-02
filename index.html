@@ -2009,6 +2009,7 @@
   <button onclick="showSection('sorting', this)" style="display:none">Sort</button>
   <button onclick="showSection('sortedlist', this)" id="sorted-list-tab">Sorted List</button>
   <button onclick="showSection('conversations', this)" id="conversations-tab">Convos</button>
+  <button onclick="showSection('procedures', this)" id="procedures-tab">Procedures</button>
   <button onclick="showSection('ideas', this)" id="ideas-tab">Ideas</button>
   <button onclick="showSection('pastlogs', this)" id="past-logs-tab">Past Logs</button>
   <button onclick="showSection('editor', this)" id="editor-tab">✏ Edit</button>
@@ -3038,6 +3039,17 @@
     </div>
   </div>
 
+  <!-- ══ PROCEDURES ══ -->
+  <div id="procedures" class="section">
+    <div style="padding: 24px 16px;">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
+        <h2 style="font-family:'Archivo Black',sans-serif;font-size:22px;color:#FFFEE7;margin:0;letter-spacing:0.04em;text-transform:uppercase;">Procedures</h2>
+        <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.4);letter-spacing:0.08em;">Recurring checklists. Hit ↻ on a board when its cycle starts over.</span>
+      </div>
+      <div id="procedures-content" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;"></div>
+    </div>
+  </div>
+
   <!-- ══ PAST LOGS ══ -->
   <div id="pastlogs" class="section">
     <style>
@@ -3306,6 +3318,7 @@
       <button class="ed-tab" onclick="edShowPane('categories', this)">Categories</button>
       <button class="ed-tab" onclick="edShowPane('ideas-cats', this)">Ideas Categories</button>
       <button class="ed-tab" onclick="edShowPane('people', this)">People</button>
+      <button class="ed-tab" onclick="edShowPane('procedures', this)">Procedures</button>
     </div>
 
     <!-- ROUTINES PANE -->
@@ -3355,6 +3368,13 @@
         People shown as tiles in the Conversations tab. Drag the ⠿ handle to reorder. Deleting a person sends their items to "Unsorted".
       </div>
       <div id="ed-people-content"></div>
+    </div>
+
+    <div id="ed-pane-procedures" class="ed-pane">
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.5);letter-spacing:0.08em;margin-bottom:12px;">
+        Recurring checklist items for the Procedures tab. Drag the ⠿ handle to reorder.
+      </div>
+      <div id="ed-procedures-content"></div>
     </div>
   </div>
 
@@ -3476,6 +3496,7 @@
     if (id === 'theoryweek') setTimeout(() => { if (window.twRenderAll) { try { window.twRenderAll(); } catch(e) { console.error(e); } } }, 50);
     if (id === 'ideas')  { try { renderIdeas(); } catch(e) { console.error(e); } }
     if (id === 'conversations') { try { renderConversations(); } catch(e) { console.error(e); } }
+    if (id === 'procedures')    { try { renderProcedures();    } catch(e) { console.error(e); } }
     if (id === 'editor') { try { edRenderRoutines(); } catch(e) { console.error(e); } }
     const arrow = document.getElementById('puzzle-hint-arrow');
     if (arrow) arrow.style.display = id === 'routines' ? '' : 'none';
@@ -11532,6 +11553,7 @@ function edShowPane(name, btn) {
   if (name === 'categories') edRenderCategories();
   if (name === 'ideas-cats') edRenderIdeasCategories();
   if (name === 'people') edRenderPeople();
+  if (name === 'procedures') edRenderProcedures();
 }
 
 // ── Drag-to-reorder state ──
@@ -12760,6 +12782,353 @@ function edAttachPeopleDrag() {
       if (touchRow) touchRow.style.opacity = '';
       touchRow = null; edPeopleDragSrc = null;
       document.querySelectorAll('.ed-people-row').forEach(r => r.style.borderTop = '');
+    });
+  });
+}
+
+// ══════════════════════════════════════════
+// ── PROCEDURES ──
+// Recurring checklists (Quarterly / Monthly / Weekly).
+// Templates define what items appear; state tracks which are done.
+// User manually resets boards via the ↻ button on each tile.
+// ══════════════════════════════════════════
+const PROC_TEMPLATES_KEY = 'procedure_templates_v1';
+const PROC_STATE_KEY     = 'procedure_state_v1';
+const PROC_BOARD_ORDER   = ['quarterly', 'monthly', 'weekly'];
+
+const _defaultProcedures = {
+  quarterly: {
+    label: 'Quarterly',
+    items: [
+      { id: 'q1', text: 'Pay Tax Estimates' },
+      { id: 'q2', text: 'Review Quarters Monarch Transactions' },
+    ],
+  },
+  monthly: {
+    label: 'Monthly',
+    items: [
+      { id: 'm1', text: 'Pay Rent' },
+      { id: 'm2', text: 'Pay Splitwise' },
+      { id: 'm3', text: 'Pay CapitalOne Credit Card' },
+      { id: 'm4', text: 'Pay Alliant CreditCard' },
+      { id: 'm5', text: 'Prepare Personal Invoice' },
+      { id: 'm6', text: 'Collect FL Invoices' },
+      { id: 'm7', text: 'Complete any tasks older than one month' },
+      { id: 'm8', text: 'Catch up on Weekly Logs' },
+    ],
+  },
+  weekly: {
+    label: 'Weekly',
+    items: [
+      { id: 'w1', text: 'Complete Weekly Log' },
+      { id: 'w2', text: 'Clean Communal Item' },
+      { id: 'w3', text: 'Call Rick' },
+      { id: 'w4', text: 'Call Daniel' },
+      { id: 'w5', text: 'Call Dad' },
+    ],
+  },
+};
+
+function loadProcedures() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROC_TEMPLATES_KEY));
+    if (saved && typeof saved === 'object') {
+      // Merge defaults so any new boards in defaults still appear.
+      const merged = JSON.parse(JSON.stringify(_defaultProcedures));
+      Object.keys(saved).forEach(k => { merged[k] = saved[k]; });
+      return merged;
+    }
+  } catch {}
+  return JSON.parse(JSON.stringify(_defaultProcedures));
+}
+function saveProcedures(tpl) {
+  try { localStorage.setItem(PROC_TEMPLATES_KEY, JSON.stringify(tpl)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+function loadProcState() {
+  try { return JSON.parse(localStorage.getItem(PROC_STATE_KEY) || '{}') || {}; } catch { return {}; }
+}
+function saveProcState(state) {
+  try { localStorage.setItem(PROC_STATE_KEY, JSON.stringify(state)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+
+function renderProcedures() {
+  const el = document.getElementById('procedures-content');
+  if (!el) return;
+  const tpl = loadProcedures();
+  const state = loadProcState();
+  el.innerHTML = '';
+  PROC_BOARD_ORDER.concat(Object.keys(tpl).filter(k => !PROC_BOARD_ORDER.includes(k)))
+    .forEach(boardKey => {
+      if (!tpl[boardKey]) return;
+      el.appendChild(buildProcTile(boardKey, tpl[boardKey], state[boardKey] || {}));
+    });
+}
+window.renderProcedures = renderProcedures;
+
+function buildProcTile(boardKey, board, boardState) {
+  const card = document.createElement('div');
+  card.className = 'sl-bucket-card';
+
+  // Header with label + reset button
+  const hdr = document.createElement('div');
+  hdr.className = 'sl-bucket-header';
+  hdr.style.display = 'flex';
+  hdr.style.alignItems = 'center';
+  hdr.style.gap = '8px';
+  hdr.innerHTML = `<span class="sl-hdr-text">${(board.label || boardKey).toUpperCase()}</span>`;
+
+  // Progress count
+  const total = (board.items || []).length;
+  const done  = (board.items || []).filter(it => boardState[it.id]).length;
+  const progress = document.createElement('span');
+  progress.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.45);letter-spacing:0.06em;";
+  progress.textContent = done + '/' + total;
+  hdr.appendChild(progress);
+
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = '↻ Reset';
+  resetBtn.title = 'Uncheck all items in this board';
+  resetBtn.style.cssText = "background:none;border:1px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:3px 8px;cursor:pointer;opacity:0.6;transition:opacity 0.15s;margin-left:auto;";
+  resetBtn.onmouseover = () => resetBtn.style.opacity = '1';
+  resetBtn.onmouseout  = () => resetBtn.style.opacity = '0.6';
+  resetBtn.onclick = () => {
+    if (!confirm(`Reset all items in "${board.label || boardKey}"?`)) return;
+    const state = loadProcState();
+    state[boardKey] = {};
+    saveProcState(state);
+    renderProcedures();
+  };
+  hdr.appendChild(resetBtn);
+  card.appendChild(hdr);
+
+  // Items
+  (board.items || []).forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'sl-item-row';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!boardState[item.id];
+    cb.style.flexShrink = '0';
+    cb.addEventListener('change', () => {
+      const state = loadProcState();
+      if (!state[boardKey]) state[boardKey] = {};
+      state[boardKey][item.id] = cb.checked;
+      saveProcState(state);
+      renderProcedures();
+    });
+
+    const txt = document.createElement('div');
+    txt.className = 'sl-item-text' + (cb.checked ? ' sl-done' : '');
+    txt.textContent = item.text;
+    txt.style.flex = '1';
+
+    row.appendChild(cb);
+    row.appendChild(txt);
+    card.appendChild(row);
+  });
+
+  if (!total) {
+    const empty = document.createElement('div');
+    empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);padding:14px 16px;";
+    empty.textContent = 'No items yet. Edit in the ✏ Edit tab.';
+    card.appendChild(empty);
+  }
+
+  return card;
+}
+
+// ── Procedures editor (Edit tab pane) ──
+function edRenderProcedures() {
+  const wrap = document.getElementById('ed-procedures-content');
+  if (!wrap) return;
+  const tpl = loadProcedures();
+
+  const boardKeys = PROC_BOARD_ORDER.concat(Object.keys(tpl).filter(k => !PROC_BOARD_ORDER.includes(k)));
+  wrap.innerHTML = boardKeys.map(boardKey => {
+    const board = tpl[boardKey];
+    if (!board) return '';
+    return `
+    <div class="ed-cat-round" id="ed-proc-block-${boardKey}">
+      <div class="ed-cat-round-header" onclick="edToggleProcBlock('${boardKey}', this)">
+        <span>${board.label}</span>
+        <span class="ed-toggle">▾</span>
+      </div>
+      <div class="ed-cat-round-body" id="ed-proc-body-${boardKey}">
+        <div style="display:grid;grid-template-columns:20px 1fr 28px;gap:6px;padding:2px 4px 6px;">
+          <span></span>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.4);">Item</span>
+          <span></span>
+        </div>
+        ${(board.items || []).map((item, ii) => `
+          <div class="ed-bucket-row ed-proc-row" draggable="true" data-board="${boardKey}" data-idx="${ii}" style="grid-template-columns:20px 1fr 28px;">
+            <div class="ed-drag-handle" title="Drag to reorder">⠿</div>
+            <input type="text" value="${(item.text || '').replace(/"/g,'&quot;')}" onchange="edUpdateProcItem('${boardKey}', ${ii}, this.value)">
+            <button class="ed-del-btn" onclick="edDeleteProcItem('${boardKey}', ${ii})" title="Remove">×</button>
+          </div>`).join('')}
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(48,28,29,0.1);">
+          <input type="text" id="ed-new-proc-${boardKey}" placeholder="New item"
+            style="flex:1;border:1px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:5px 8px;outline:none;"
+            onkeydown="if(event.key==='Enter')edAddProcItem('${boardKey}')">
+          <button class="ed-add-btn" onclick="edAddProcItem('${boardKey}')">+ Add</button>
+        </div>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  edAttachProcDrag();
+}
+window.edRenderProcedures = edRenderProcedures;
+
+function edToggleProcBlock(boardKey, headerEl) {
+  const body = document.getElementById('ed-proc-body-' + boardKey);
+  if (!body) return;
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? '' : 'none';
+  headerEl.classList.toggle('collapsed', !collapsed);
+}
+window.edToggleProcBlock = edToggleProcBlock;
+
+function edUpdateProcItem(boardKey, ii, value) {
+  const tpl = loadProcedures();
+  if (!tpl[boardKey] || !tpl[boardKey].items[ii]) return;
+  tpl[boardKey].items[ii].text = value;
+  saveProcedures(tpl);
+  if (typeof renderProcedures === 'function') try { renderProcedures(); } catch(e) {}
+}
+window.edUpdateProcItem = edUpdateProcItem;
+
+function edAddProcItem(boardKey) {
+  const inp = document.getElementById('ed-new-proc-' + boardKey);
+  if (!inp) return;
+  const text = inp.value.trim();
+  if (!text) { inp.focus(); return; }
+  const tpl = loadProcedures();
+  if (!tpl[boardKey]) return;
+  if (!Array.isArray(tpl[boardKey].items)) tpl[boardKey].items = [];
+  tpl[boardKey].items.push({ id: Date.now() + '_' + Math.random().toString(36).slice(2,6), text });
+  saveProcedures(tpl);
+  inp.value = '';
+  edRenderProcedures();
+  // Re-open the block we just edited
+  const body = document.getElementById('ed-proc-body-' + boardKey);
+  if (body) body.style.display = '';
+  if (typeof renderProcedures === 'function') try { renderProcedures(); } catch(e) {}
+}
+window.edAddProcItem = edAddProcItem;
+
+function edDeleteProcItem(boardKey, ii) {
+  const tpl = loadProcedures();
+  if (!tpl[boardKey] || !tpl[boardKey].items[ii]) return;
+  const item = tpl[boardKey].items[ii];
+  if (!confirm(`Remove "${item.text}"?`)) return;
+  tpl[boardKey].items.splice(ii, 1);
+  saveProcedures(tpl);
+  // Drop any saved state for this id so it doesn't linger
+  try {
+    const state = loadProcState();
+    if (state[boardKey] && item.id in state[boardKey]) {
+      delete state[boardKey][item.id];
+      saveProcState(state);
+    }
+  } catch {}
+  edRenderProcedures();
+  const body = document.getElementById('ed-proc-body-' + boardKey);
+  if (body) body.style.display = '';
+  if (typeof renderProcedures === 'function') try { renderProcedures(); } catch(e) {}
+}
+window.edDeleteProcItem = edDeleteProcItem;
+
+let edProcDragSrc = null;
+function edAttachProcDrag() {
+  document.querySelectorAll('.ed-proc-row[draggable]').forEach(row => {
+    row.addEventListener('dragstart', e => {
+      edProcDragSrc = row;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.style.opacity = '0.4', 0);
+    });
+    row.addEventListener('dragend', () => { row.style.opacity = ''; edProcDragSrc = null; });
+    row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!edProcDragSrc || edProcDragSrc === row) return;
+      if (edProcDragSrc.dataset.board !== row.dataset.board) return;
+      const boardKey = row.dataset.board;
+      const srcIdx = parseInt(edProcDragSrc.dataset.idx);
+      const dstIdx = parseInt(row.dataset.idx);
+      const tpl = loadProcedures();
+      if (!tpl[boardKey] || !tpl[boardKey].items) return;
+      const [moved] = tpl[boardKey].items.splice(srcIdx, 1);
+      tpl[boardKey].items.splice(dstIdx, 0, moved);
+      saveProcedures(tpl);
+      edRenderProcedures();
+      const body = document.getElementById('ed-proc-body-' + boardKey);
+      if (body) body.style.display = '';
+      if (typeof renderProcedures === 'function') try { renderProcedures(); } catch(e) {}
+    });
+
+    // Mobile touch drag
+    let touchRow = null, touchStartY = 0, touchGhost = null;
+    row.addEventListener('touchstart', e => {
+      const handle = row.querySelector('.ed-drag-handle');
+      const touch = e.touches[0];
+      if (handle) {
+        const rect = handle.getBoundingClientRect();
+        if (touch.clientX < rect.left - 10 || touch.clientX > rect.right + 10 ||
+            touch.clientY < rect.top - 10 || touch.clientY > rect.bottom + 10) return;
+      }
+      touchRow = row; touchStartY = touch.clientY; edProcDragSrc = row;
+      touchGhost = row.cloneNode(true);
+      touchGhost.style.cssText = 'position:fixed;left:0;right:0;z-index:9999;opacity:0.85;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:#FFFEE7;' +
+        'top:' + row.getBoundingClientRect().top + 'px;width:' + row.offsetWidth + 'px;';
+      document.body.appendChild(touchGhost);
+      row.style.opacity = '0.3';
+    }, { passive: true });
+    row.addEventListener('touchmove', e => {
+      if (!touchRow || !touchGhost) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dy = touch.clientY - touchStartY;
+      touchGhost.style.top = (touchRow.getBoundingClientRect().top + dy) + 'px';
+      document.querySelectorAll('.ed-proc-row').forEach(r => r.style.borderTop = '');
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-proc-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow && targetRow.dataset.board === touchRow.dataset.board) {
+        targetRow.style.borderTop = '3px solid #F7B338';
+      }
+    }, { passive: false });
+    row.addEventListener('touchend', e => {
+      if (!touchRow) return;
+      const touch = e.changedTouches[0];
+      document.querySelectorAll('.ed-proc-row').forEach(r => r.style.borderTop = '');
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      touchRow.style.opacity = '';
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetRow = target ? target.closest('.ed-proc-row[draggable]') : null;
+      if (targetRow && targetRow !== touchRow && targetRow.dataset.board === touchRow.dataset.board) {
+        const boardKey = touchRow.dataset.board;
+        const srcIdx = parseInt(touchRow.dataset.idx);
+        const dstIdx = parseInt(targetRow.dataset.idx);
+        const tpl = loadProcedures();
+        if (tpl[boardKey] && tpl[boardKey].items) {
+          const [moved] = tpl[boardKey].items.splice(srcIdx, 1);
+          tpl[boardKey].items.splice(dstIdx, 0, moved);
+          saveProcedures(tpl);
+          edRenderProcedures();
+          const body = document.getElementById('ed-proc-body-' + boardKey);
+          if (body) body.style.display = '';
+          if (typeof renderProcedures === 'function') try { renderProcedures(); } catch(e) {}
+        }
+      }
+      touchRow = null; edProcDragSrc = null;
+    });
+    row.addEventListener('touchcancel', () => {
+      if (touchGhost) { touchGhost.remove(); touchGhost = null; }
+      if (touchRow) touchRow.style.opacity = '';
+      touchRow = null; edProcDragSrc = null;
+      document.querySelectorAll('.ed-proc-row').forEach(r => r.style.borderTop = '');
     });
   });
 }
