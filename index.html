@@ -3205,8 +3205,80 @@
         .pl-tile { width: calc(33.33% - 6px); height: 90px; }
         .pl-tile-day { font-size: 22px; }
       }
+
+      /* Weekly logs section */
+      .pl-section-heading {
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #F7B338;
+        margin: 0;
+        padding: 16px 16px 8px;
+        background: #301C1D;
+      }
+      .pl-week-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 16px 12px;
+        background: #301C1D;
+        border-bottom: 1px solid rgba(255,254,231,0.08);
+      }
+      .pl-week-tile {
+        background: #FFFEE7;
+        width: 110px;
+        height: 78px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: border-color 0.12s, background 0.12s;
+        flex-shrink: 0;
+        padding: 6px;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .pl-week-tile:hover { border-color: #E94D32; background: #f5f0d8; }
+      .pl-week-tile.empty { background: rgba(255,254,231,0.55); }
+      .pl-week-tile.empty:hover { background: rgba(255,254,231,0.75); border-color: rgba(233,77,50,0.5); }
+      .pl-week-tile.current { border-color: #F7B338; }
+      .pl-week-num {
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 18px;
+        color: #301C1D;
+        line-height: 1;
+      }
+      .pl-week-tile.empty .pl-week-num { color: rgba(48,28,29,0.45); }
+      .pl-week-range {
+        font-family: 'Space Mono', monospace;
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        color: rgba(48,28,29,0.55);
+        margin-top: 5px;
+        text-transform: uppercase;
+      }
+      .pl-week-tile.empty .pl-week-range { color: rgba(48,28,29,0.35); }
+      .pl-week-indicator {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .pl-week-tile.has-content .pl-week-indicator { background: #E94D32; }
+      .pl-week-tile.empty .pl-week-indicator { border: 1px solid rgba(48,28,29,0.18); }
+      @media (max-width: 700px) {
+        .pl-week-tile { width: calc(50% - 4px); }
+      }
     </style>
 
+    <div class="pl-section-heading">Weekly Logs</div>
+    <div class="pl-week-strip" id="pl-week-strip"></div>
+    <div class="pl-section-heading">Daily Logs</div>
     <div class="pl-grid" id="pl-grid"></div>
 
     <!-- Log viewer modal -->
@@ -5863,6 +5935,7 @@
   }
 
   function renderPastLogs() {
+    try { renderWeeklyLogs(); } catch(e) { console.error(e); }
     const grid = document.getElementById('pl-grid');
     if (!grid) return;
     grid.innerHTML = '';
@@ -6035,6 +6108,189 @@
 
   window.renderPastLogs = renderPastLogs;
   window.plCloseModal   = plCloseModal;
+
+  // ══════════════════════════════════════════
+  // ── WEEKLY LOGS ──
+  // Weeks start on Thursday. Keyed by 'YYYY-MM-DD' of that Thursday.
+  // ══════════════════════════════════════════
+  const WEEKLY_LOGS_KEY = 'weekly_logs_v1';
+  const WEEKLY_SEED_FLAG = 'weekly_logs_seeded_2026_v1';
+
+  function loadWeeklyLogs() {
+    try { return JSON.parse(localStorage.getItem(WEEKLY_LOGS_KEY) || '{}') || {}; }
+    catch { return {}; }
+  }
+  function saveWeeklyLogs(logs) {
+    try { localStorage.setItem(WEEKLY_LOGS_KEY, JSON.stringify(logs)); } catch {}
+    if (typeof gistMarkDirty === 'function') gistMarkDirty();
+  }
+  function loadWeeklyLog(weekKey) {
+    return loadWeeklyLogs()[weekKey] || '';
+  }
+  function saveWeeklyLog(weekKey, text) {
+    const logs = loadWeeklyLogs();
+    if (text && text.trim()) logs[weekKey] = text;
+    else delete logs[weekKey];
+    saveWeeklyLogs(logs);
+  }
+
+  // First Thursday of a year (week 1's start)
+  function firstThursdayOfYear(year) {
+    const d = new Date(year, 0, 1);
+    // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+    const offset = (4 - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + offset);
+    return d;
+  }
+  // Convert a Date to its Thursday-aligned week-start (looks back to most recent Thursday)
+  function weekStartFor(date) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dow = d.getDay();
+    const back = (dow - 4 + 7) % 7; // days since most recent Thursday
+    d.setDate(d.getDate() - back);
+    return d;
+  }
+  function fmtKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+  function weekNumberOfYear(weekStart) {
+    const first = firstThursdayOfYear(weekStart.getFullYear());
+    const ms = weekStart - first;
+    return Math.floor(ms / (7 * 24 * 3600 * 1000)) + 1;
+  }
+  function weekRangeText(weekStart) {
+    const end = new Date(weekStart);
+    end.setDate(weekStart.getDate() + 6);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const sm = months[weekStart.getMonth()], em = months[end.getMonth()];
+    if (sm === em) return `${sm} ${weekStart.getDate()}-${end.getDate()}`;
+    return `${sm} ${weekStart.getDate()} - ${em} ${end.getDate()}`;
+  }
+
+  // Build the list of week-start Thursdays from week 1 of current year through current week.
+  function getWeeksThroughNow() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const first = firstThursdayOfYear(year);
+    const currentWS = weekStartFor(today);
+    const weeks = [];
+    let d = new Date(first);
+    while (d <= currentWS) {
+      weeks.push(new Date(d));
+      d.setDate(d.getDate() + 7);
+    }
+    return weeks;
+  }
+
+  // ── Seed: pre-populate 2026 weeks 1–12, 14–18 (skipping week 13) ──
+  (function seedWeeklyLogs() {
+    try {
+      if (localStorage.getItem(WEEKLY_SEED_FLAG)) return;
+      const seed = {
+        '2026-01-01': `Week 1 (as distant memory): Returning from Maine and New York with a discovery that I want to be praying. Going to see Marty Supreme after going to the Sauna, thinking that it would be a comedy, and then needing to hold each other through the film. After, walking up the parking stairwell as it snowed. Adam confirming that they want to be friends, but maybe not more.`,
+        '2026-01-08': `Week 2 (as weak memory): A week of investing in Boston Friendships. Coffee with Randi and drinks with Milly. Feeling good.`,
+        '2026-01-15': `Week 3 (as memory) : A week of feeling on top of rhythms. Finding the delight in having made structure for myself with an unstructured job. Big insight was to break down tasks into small, medium and projects, and then commit to clearing out the small tasks. Had a truly delightful set of drinks with Slide at Lamplighter. Highs and Lows relating to Vivance. Watching heated rivalry for the first time, and then the second. Realizing that having a deadline (clearing out all small tasks by end of week) is giving me the push I need to get work done. Feeling excited that the way through is to focus on the quality of the work Im doing now. Feeling that I just need to stay the course, trust the process.`,
+        '2026-01-22': `Week 4: Emotionally week with Eden's return from Berlin, but ultimately feel like we found a path while sitting in the stairwell of a parking garage. Devastating week with the continued brutality in Minneapolis Beautiful week with the storm coming through.  Realizing that the way I want to live life is by making each day as good or as rich as possible, and that often that means suffering beautifully. Realizing that giving advice with a baseline of affirmation (compliment bruschetta) allows the receiver to understand that what they are being offered is something to help them become or stay exceptional, not something that is revealing to them that they are actually inadequate. Highlight of the week was running into Lio in line at Katy's show Cloud Collector. Getting to debrief with Lio what was going on and feeling held by someone I respect.`,
+        '2026-01-29': `Week 5 (as memory):  Got scary Medical news from Rick. Don't know much yet, but he needs a bone marrow biopsy. Went to beers and Dogs with Julia and new Arnav. Met up with Ruby to discuss Sketchy Memories and then an Ice Protest. Ended the weekend with a fantastic Moon Swap in somebody's house.`,
+        '2026-02-05': `Week 6 (as memory): This is the week that Eden called 7th month notice.`,
+        '2026-02-12': `Week 7: Flew to Atlanta for the Aquatics Kickoff Meeting. Had big feelings of meaning and connection to the Ferguson Lynch work while also dealing with the stress. Had a big stress relief with Mother Goose in the Atlanta Moxy when Rick had slightly good medical news. Time with Helen and Rose and Eden. Anniversary freak outs with eden and boba and then Maggie Moynihan's restaurant rec.`,
+        '2026-02-19': `Week 8:
+The Day After Anniversary in NYC with Eden and Rose. Going to pick out a new silk scarf for eden at mood fabric and then moving to the Guggenheim where we worked in the cafe before exploring the museum. Drinks with my mom at the rooftop bar was difficult that night. We went to the Public Library so I could call my psychiatrist, Rose scouted us to danish breakfast and we got on a train. Eden and I had a blast playing Cabo. Rose and I had a full week. We had time to play watching KDramas and getting facials, but also time to work, like meeting with Sam in her office in Kendall. My favorite night was going to Lehrhause. Had a great gold star at the Doctors appointment with Tessa Hadlock. It was a hard week balancing Rose being here and things feeling in dangerous territory with Eden. In one sleepless night I found solace in the idea that I would have seven weeks to have intensive feedback on how I could change. That I could treat this as a course or a camp that will move me in the direction that I want to move. On Thursday I had a big reaction to a mistake about the scooter delivery. Through GatheringDay and Ketamine on Saturday I realized that I wanted to try to step back domestic sharing with Eden while stepping up our artistic collaboration. I told eden this in candlelight in the absolute snowy magic of Franklin park.`,
+        '2026-02-26': `Week 9:
+Started week out with a solitary blizzard experience. The fate was laid as I biked home from Moon Swap Council Meeting, considered dropping by Mossland but decided to go to LBBH instead to have time to wind down and prepare for the week. This choice set me up for 36 hours alone. Eden called later that night and said that she wanted to have each other in our lives forever. Was such an enormous pivot from earlier in the day when Tayo and I sat in the atrium of the Gardner. In that atrium I stared at an exotic flower while Tayo tried to troubleshoot with me but I felt that I had already lost this relationship. On tuesday, LBBH repopulated with Trey, Ali, Ise, Mishka and we had Adam over for RCWFHIPLFPWLL. Then I left for sledding with Ruby and Eden. We took an old family style toboggan to Sugar Bowl and had a peak joy time at sunset. I wasnt perfect, I came in rushed, exhilarated and exhausted from snowy biking and immediately said "we need to go before we lose our light" before letting the situation reveal itself. But sledding felt perfect. Ruby found 20$ on the sidewalk and we had treats after. Then Eden went to see Binny, I went to see Blair at the Behan. I had a nice morning the next day in eden apartment. Had therapy that was useful for pointing out the struggle I have with perfectionism. It also felt good to be in a room that was not my own and I was able to tidy my things but not be bothered by the rest. This was a week of honing in a morning rhythm. I feel stress going through a nearly 3 hour morning routine, feeling that I should already be working, but that voice is getting quieter. I had a great time working at the Boston Public Library. I liked when we hit closing at 8pm and a hundred people packed up work together. I really enjoyed Evan coming over to Cowork at LBBH. And absolutely loved having dinner and drinks with Slide in Busy Allston and the Sil. Eden and I had a rough time Friday night, but made some progress working through it Saturday.`,
+        '2026-03-05': `Week 10:
+Had a great time going with Jasmine to singing resistance event. Getting Boba in the midst of a lunar new year celebration and having Jordan meet with us to discuss the event. Talked with Jordan about the singing work they are doing, and heard the discussion points emerge the next night at their protest singing training. That felt special. Biking from chinatown to JP, walking up the stairs and into the JP community who had converged to support Eleanor with Maury felt special. Felt a real high that night. Had a fun snowy moon swap, with a smaller than usual crowd, but a real success. Met Seth at this one. Coworker with Evan the next day with Adam stopping by for a nap. Ise made a wonderful dinner and had a small dinner party with Josselyn, Ali/Trey, Evan and I. Then headed to NM. Worked successfully on the plane and landed smoothly. The next morning, developed the method of doing a sprint workout, followed by intervals of jogging and working on small tasks on phone. Felt like such a euphoric success of how to get done the small stressful things. Then got the call from Rose/Rick that the Bone Marrow Biopsy came back fine. Worked a bit then rode up to la on a cloud, singing and going through the vocal improvisation course.`,
+        '2026-03-12': `Week 11:
+Cleaning the Acequias. Working from La Puebla. Driving down to Albuquerque with Rose. Meeting with SE FireMap Matthew/Martin. Negotiating the mother-daughter tensions of working with Ferguson Lynch. Negotiating the dynamics between Julie, Madeleine, Eve and Myself. Drove up to Santa Fe wednesday night. Had a four course dinner made by Madeline. Took Jeff the next day hiking past Glorieta along the pecos. Discovered Cafe Fina. Sang Eden's Song "only time will tell" with Jeff along the banks. Tried to fill out paperwork on a picnic bench but was too windy. Had what felt like a very lovely, very productive day. Drove home talking to Christina. Friday I started the project of clearing out my room. Finished that over the weekend. Dinner at Trombones with Rose/Rick. Pi Day with Joe. Sunday doing a field visit with Scott Jackson and then going over to smoke a blunt and watch the oscars and survivor with Elliott.`,
+        '2026-03-19': `Week 12:
+Vibecoding website for alis birthday. Ali's birthday and Dissertation defense. getting crates of blueberries from haymarket. Oyster man helping me out to convert the cash. Getting obsessed with vibe coding as a convivial tool.`,
+        '2026-04-02': `Week 14 (first week april)
+Gay wedding Charleston trip with eden. Going after a grant with nicole. Spending time with Slide and Anthony. Running sprints through the city.`,
+        '2026-04-09': `Week 15 (second week april)
+Relationship with eden thriving. Had a great date eating Mango frozen yogurt at Far Out.`,
+        '2026-04-16': `Week 16 3rd week April
+Exhilarating week trying to hire up to spend the NRCS contract. Finding a lot of joy in the attempt. Getting a drink with Trey at Toad.`,
+        '2026-04-23': `Week 17 (4th week April)
+Coffee and bagels with neighbors. Going on a skate with Tayo. Going to Sauna with Jasmine`,
+        '2026-04-30': `Week 18 (last week of april)
+Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discussion with therapist miranda about shame, or the paralysis that comes when I think I might have done or be a part of something wrong. we talked about objects in motion, and that finding out more information is a way to break out of stillness. Not going back over the justifications, or trying to minimize, but looking for information and practicing facing it. Spoke this week with Pete/Maria and Monica. Hoping that arrangement goes well.`,
+      };
+      const existing = JSON.parse(localStorage.getItem(WEEKLY_LOGS_KEY) || '{}');
+      Object.entries(seed).forEach(([k, v]) => {
+        if (!existing[k]) existing[k] = v; // never overwrite existing user content
+      });
+      localStorage.setItem(WEEKLY_LOGS_KEY, JSON.stringify(existing));
+      localStorage.setItem(WEEKLY_SEED_FLAG, '1');
+    } catch(e) { console.error(e); }
+  })();
+
+  function renderWeeklyLogs() {
+    const strip = document.getElementById('pl-week-strip');
+    if (!strip) return;
+    strip.innerHTML = '';
+    const logs = loadWeeklyLogs();
+    const weeks = getWeeksThroughNow();
+    const currentWS = weekStartFor(new Date());
+    const currentKey = fmtKey(currentWS);
+    // Most recent first
+    weeks.slice().reverse().forEach(ws => {
+      const key = fmtKey(ws);
+      const has = !!(logs[key] && logs[key].trim());
+      const tile = document.createElement('div');
+      tile.className = 'pl-week-tile' + (has ? ' has-content' : ' empty') + (key === currentKey ? ' current' : '');
+      tile.innerHTML = `
+        <div class="pl-week-indicator"></div>
+        <div class="pl-week-num">W${weekNumberOfYear(ws)}</div>
+        <div class="pl-week-range">${weekRangeText(ws)}</div>`;
+      tile.onclick = () => plOpenWeekModal(key);
+      strip.appendChild(tile);
+    });
+  }
+  window.renderWeeklyLogs = renderWeeklyLogs;
+
+  function plOpenWeekModal(weekKey) {
+    const ws = new Date(weekKey + 'T12:00:00');
+    const wn = weekNumberOfYear(ws);
+    document.getElementById('pl-modal-date').textContent = `Week ${wn} · ${weekRangeText(ws)}`;
+
+    const body = document.getElementById('pl-modal-body');
+    body.innerHTML = '';
+
+    const ta = document.createElement('textarea');
+    ta.style.cssText = "width:100%;min-height:340px;border:2px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:12px;outline:none;line-height:1.65;resize:vertical;box-sizing:border-box;";
+    ta.value = loadWeeklyLog(weekKey);
+    ta.placeholder = 'Notes from this week...';
+    body.appendChild(ta);
+
+    const status = document.createElement('div');
+    status.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);margin-top:8px;letter-spacing:0.06em;";
+    status.textContent = ta.value ? 'Saved' : 'Empty';
+    body.appendChild(status);
+
+    let saveTimer;
+    const doSave = () => {
+      saveWeeklyLog(weekKey, ta.value);
+      status.style.color = '#7FA497';
+      status.textContent = 'Saved ✓';
+      setTimeout(() => {
+        status.style.color = 'rgba(48,28,29,0.4)';
+        status.textContent = ta.value ? 'Saved' : 'Empty';
+      }, 1200);
+      try { renderWeeklyLogs(); } catch(e) {}
+    };
+    ta.addEventListener('input', () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(doSave, 600);
+    });
+    ta.addEventListener('blur', () => { clearTimeout(saveTimer); doSave(); });
+
+    document.getElementById('pl-modal').style.display = 'block';
+    setTimeout(() => ta.focus(), 50);
+  }
+  window.plOpenWeekModal = plOpenWeekModal;
 
   // ── Auto-save daily log entry when tasks are completed ──
   function ensureDailyLogEntry(dateStr) {
