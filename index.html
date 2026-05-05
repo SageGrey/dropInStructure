@@ -13050,7 +13050,7 @@ function edAttachPeopleDrag() {
 // ══════════════════════════════════════════
 const PROC_TEMPLATES_KEY = 'procedure_templates_v1';
 const PROC_STATE_KEY     = 'procedure_state_v1';
-const PROC_BOARD_ORDER   = ['quarterly', 'monthly', 'weekly'];
+const PROC_BOARD_ORDER   = ['quarterly', 'monthly', 'weekly', 'invoicing'];
 
 const _defaultProcedures = {
   quarterly: {
@@ -13081,6 +13081,16 @@ const _defaultProcedures = {
       { id: 'w3', text: 'Call Rick' },
       { id: 'w4', text: 'Call Daniel' },
       { id: 'w5', text: 'Call Dad' },
+    ],
+  },
+  invoicing: {
+    label: 'Invoicing',
+    items: [
+      { id: 'i1', text: 'Check If FL2nd Gen Has Submitted (copy over)' },
+      { id: 'i2', text: 'Update Project Categories on Own Invoice (copy over)' },
+      { id: 'i3', text: 'Add Correct Projects from Budget to Projects' },
+      { id: 'i4', text: 'Check Monarch, Software Invoices' },
+      { id: 'i5', text: 'Export PDFS and Send' },
     ],
   },
 };
