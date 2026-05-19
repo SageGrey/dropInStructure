@@ -5802,6 +5802,51 @@
     // Length section
     popup.appendChild(buildSection('Length', 'length', SORT_ROUNDS[0].buckets));
 
+    // FL Project section — dropdown of active FL projects (names only)
+    const projSec = document.createElement('div');
+    projSec.className = 'te-section';
+    const projLbl = document.createElement('div');
+    projLbl.className = 'te-section-label';
+    projLbl.textContent = 'FL Project';
+    projSec.appendChild(projLbl);
+    const projSel = document.createElement('select');
+    projSel.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:14px;padding:8px 10px;outline:none;box-sizing:border-box;cursor:pointer;";
+    function refreshProjOptions() {
+      const flProjects = (typeof getActiveFLProjects === 'function') ? getActiveFLProjects() : [];
+      const curr = (typeof loadSortItems === 'function') ? loadSortItems().find(x => x.id == itemId) : item;
+      const currId = curr ? curr.projectId : '';
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      projSel.innerHTML = '<option value="">— No project —</option>' +
+        flProjects.map(p => `<option value="${p.id}"${currId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('') +
+        '<option value="__new__">+ New Project…</option>';
+    }
+    refreshProjOptions();
+    projSel.addEventListener('change', () => {
+      const val = projSel.value;
+      if (val === '__new__') {
+        if (typeof showNewProjectModal === 'function') {
+          showNewProjectModal({
+            isFL: true,
+            onSave: (proj) => {
+              if (typeof assignProjectToItem === 'function') assignProjectToItem(itemId, proj.id);
+              refreshProjOptions();
+            },
+            onCancel: () => refreshProjOptions(),
+          });
+        }
+      } else if (val) {
+        if (typeof assignProjectToItem === 'function') assignProjectToItem(itemId, val);
+      } else {
+        // Clear project assignment
+        sortAllItems = loadSortItems();
+        const it2 = sortAllItems.find(x => x.id == itemId);
+        if (it2) { delete it2.projectId; saveSortItems(sortAllItems); }
+        if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+      }
+    });
+    projSec.appendChild(projSel);
+    popup.appendChild(projSec);
+
     // Category section — grouped by meta
     const catSec = document.createElement('div');
     catSec.className = 'te-section';
