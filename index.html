@@ -2956,6 +2956,7 @@
       <button class="sl-view-tile sl-active" id="sl-tab-timing"   onclick="slSetView('timing')">Timing</button>
       <button class="sl-view-tile"           id="sl-tab-length"   onclick="slSetView('length')">Length</button>
       <button class="sl-view-tile"           id="sl-tab-category" onclick="slSetView('category')">Category</button>
+      <button class="sl-view-tile"           id="sl-tab-project"  onclick="slSetView('project')">Project</button>
       <button class="sl-view-tile"           id="sl-tab-age"      onclick="slSetView('age')">Oldest</button>
 
       <div style="width:1px;height:24px;background:rgba(255,254,231,0.15);margin:0 4px;flex-shrink:0;"></div>
@@ -4652,6 +4653,12 @@
       subField: 'timing',
       subLabel: (item) => item.timing || null,
     },
+    project: {
+      field: 'projectId',
+      buckets: null, // built dynamically from active FL projects
+      subField: 'timing',
+      subLabel: (item) => item.timing || null,
+    },
     age: {
       field: '_age',
       buckets: [
@@ -4754,33 +4761,47 @@
     const view = SL_VIEWS[slView];
     if (!view) return;
 
-    // Get buckets — for category view build dynamically from ALL known subcategories
+    // Get buckets — for category/project view build dynamically
     let buckets = view.buckets;
     if (!buckets) {
-      // Build live from SORT_ROUNDS so editor changes (add/delete/rename) propagate
-      const allSubcats = SORT_ROUNDS
-        .filter(r => r.field === 'subcategory')
-        .flatMap(r => r.buckets.map(b => ({
-          key: b.key,
-          label: b.label,
-          accent: b.color || '#888',
-          meta: b.meta
-        })));
-      // Add any orphan subcategories still tagged on items but no longer defined
-      const knownKeys = new Set(allSubcats.map(b => b.key));
-      allItems.forEach(it => {
-        if (it.subcategory && !knownKeys.has(it.subcategory)) {
-          allSubcats.push({ key: it.subcategory, label: it.subcategory.replace(/-/g,' '), accent: '#888' });
-          knownKeys.add(it.subcategory);
-        }
-      });
-      // Apply filter to which categories are shown
-      if (slFilter === 'fl') {
-        buckets = allSubcats.filter(b => FL_SUBCAT_KEYS.has(b.key));
-      } else if (slFilter === 'non-fl') {
-        buckets = allSubcats.filter(b => !FL_SUBCAT_KEYS.has(b.key));
+      if (view.field === 'projectId') {
+        // Build from active FL projects (Project view)
+        const flProjects = (typeof getActiveFLProjects === 'function') ? getActiveFLProjects() : [];
+        buckets = flProjects.map(p => ({
+          key: p.id,
+          label: p.name,
+          accent: '#5b8bd4',
+          meta: p.isFL ? 'fl' : undefined,
+          isProject: true,
+          csvCategory: p.csvCategory,
+          csvLineItem: p.csvLineItem,
+        }));
       } else {
-        buckets = allSubcats;
+        // Build live from SORT_ROUNDS so editor changes (add/delete/rename) propagate
+        const allSubcats = SORT_ROUNDS
+          .filter(r => r.field === 'subcategory')
+          .flatMap(r => r.buckets.map(b => ({
+            key: b.key,
+            label: b.label,
+            accent: b.color || '#888',
+            meta: b.meta
+          })));
+        // Add any orphan subcategories still tagged on items but no longer defined
+        const knownKeys = new Set(allSubcats.map(b => b.key));
+        allItems.forEach(it => {
+          if (it.subcategory && !knownKeys.has(it.subcategory)) {
+            allSubcats.push({ key: it.subcategory, label: it.subcategory.replace(/-/g,' '), accent: '#888' });
+            knownKeys.add(it.subcategory);
+          }
+        });
+        // Apply filter to which categories are shown
+        if (slFilter === 'fl') {
+          buckets = allSubcats.filter(b => FL_SUBCAT_KEYS.has(b.key));
+        } else if (slFilter === 'non-fl') {
+          buckets = allSubcats.filter(b => !FL_SUBCAT_KEYS.has(b.key));
+        } else {
+          buckets = allSubcats;
+        }
       }
     }
 
@@ -4792,6 +4813,28 @@
     const unsortedItems = bucketOf ? []          : activeItems.filter(it => !it[view.field]);
 
     el.innerHTML = '';
+
+    // Project view: small action bar with "+ New Project"
+    if (view.field === 'projectId') {
+      const actions = document.createElement('div');
+      actions.style.cssText = 'width:100%;padding:0 4px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+      const addBtn = document.createElement('button');
+      addBtn.textContent = '+ New Project';
+      addBtn.style.cssText = "background:#E94D32;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;";
+      addBtn.onclick = () => {
+        if (typeof showNewProjectModal === 'function') {
+          showNewProjectModal({ isFL: true, onSave: () => renderSortedList() });
+        }
+      };
+      actions.appendChild(addBtn);
+      if (buckets.length === 0) {
+        const hint = document.createElement('div');
+        hint.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.45);letter-spacing:0.06em;";
+        hint.textContent = 'No active projects yet.';
+        actions.appendChild(hint);
+      }
+      el.appendChild(actions);
+    }
 
     // Always render all buckets (even empty) + unsorted tile
     buckets.forEach(bucket => {
@@ -4837,12 +4880,21 @@
     const item = sortAllItems.find(it => it.id == itemId);
     if (!item) return;
     item[field] = value;
-    // Auto-assign FL meta when moved to an FL subcategory
+    // Auto-assign FL meta when moved to an FL subcategory (legacy)
     if (field === 'subcategory' && value && FL_SUBCAT_KEYS.has(value)) {
       item.meta = 'fl';
     }
+    // Auto-assign FL meta when moved to an FL project
+    if (field === 'projectId' && value && typeof getProject === 'function') {
+      const proj = getProject(value);
+      if (proj && proj.isFL) item.meta = 'fl';
+    }
     saveSortItems(sortAllItems);
     renderSortedList();
+    // If item became FL but has no project, prompt the user
+    if (item.meta === 'fl' && !item.projectId && typeof maybePromptForProject === 'function') {
+      setTimeout(() => maybePromptForProject(itemId), 60);
+    }
   }
 
   function slReorderItem(dragId, targetId, above, view) {
@@ -4991,6 +5043,10 @@
       try { slShowCompletionPrompt(newItem); } catch(e) { console.error(e); }
     }
     renderSortedList();
+    // Prompt for project if the new item is FL but has no project yet
+    if (isFL && !newItem.projectId && typeof maybePromptForProject === 'function') {
+      setTimeout(() => maybePromptForProject(newItem.id), 60);
+    }
   }
   window.slAddCompletedDirect = slAddCompletedDirect;
 
@@ -5360,12 +5416,24 @@
       // Inherit the active filter so new items show up in the view where they were added
       if (slFilter === 'fl' && !newItem.meta) newItem.meta = 'fl';
       if (slStarredOnly) newItem.starred = true;
+      // Project view: dropping into a project tile auto-assigns projectId + FL meta
+      if (view.field === 'projectId' && bucket.key !== '__unsorted') {
+        newItem.projectId = bucket.key;
+        if (typeof getProject === 'function') {
+          const proj = getProject(bucket.key);
+          if (proj && proj.isFL) newItem.meta = 'fl';
+        }
+      }
       sortAllItems = loadSortItems();
       sortAllItems.push(newItem);
       saveSortItems(sortAllItems);
       inp.value = ''; flChk.checked = false;
       inputRow.style.display = 'none'; addBtn.style.display = '';
       renderSortedList();
+      // Prompt for project if the new item is FL but has no project yet
+      if (newItem.meta === 'fl' && !newItem.projectId && typeof maybePromptForProject === 'function') {
+        setTimeout(() => maybePromptForProject(newItem.id), 60);
+      }
     };
     saveBtn.onclick = doAdd;
     inp.onkeydown = e => { if (e.key === 'Enter') doAdd(); if (e.key === 'Escape') cancelBtn.onclick(); };
@@ -13851,6 +13919,163 @@ function escapeHtml(s) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// ══════════════════════════════════════════
+// ── PROJECT PICKER ──
+// Small modal that prompts the user to assign an item to an FL project.
+// Triggered from FL-task creation paths so new FL items can't escape
+// the project system.
+// ══════════════════════════════════════════
+function showProjectPicker(itemId, opts) {
+  opts = opts || {};
+  const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+  const it = items.find(i => i.id == itemId);
+  if (!it) return;
+  const activeFL = getActiveFLProjects();
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#FFFEE7;max-width:480px;width:100%;border:2px solid #301C1D;padding:0;max-height:90vh;overflow-y:auto;';
+
+  const hdr = document.createElement('div');
+  hdr.style.cssText = "background:#F7B338;padding:12px 16px;font-family:'Archivo Black',sans-serif;font-size:13px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;";
+  hdr.innerHTML = '<span>Assign to FL project</span>';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = 'background:none;border:none;color:#E94D32;font-size:22px;cursor:pointer;padding:0;line-height:1;';
+  closeBtn.onclick = () => { overlay.remove(); if (opts.onSkip) opts.onSkip(); };
+  hdr.appendChild(closeBtn);
+  box.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:12px;';
+  box.appendChild(body);
+
+  const itemPreview = document.createElement('div');
+  itemPreview.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:rgba(48,28,29,0.75);background:rgba(48,28,29,0.06);padding:8px 10px;line-height:1.45;";
+  itemPreview.textContent = it.text || '(no text)';
+  body.appendChild(itemPreview);
+
+  const select = document.createElement('select');
+  select.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;outline:none;";
+  select.innerHTML = '<option value="">— Pick a project —</option>' +
+    activeFL.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ${escapeHtml(p.csvCategory)}${p.csvLineItem ? ' › ' + escapeHtml(p.csvLineItem) : ''}</option>`).join('') +
+    '<option value="__new__">+ New Project…</option>';
+  body.appendChild(select);
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;justify-content:space-between;padding-top:4px;';
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = 'Skip for now';
+  skipBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;";
+  skipBtn.onclick = () => { overlay.remove(); if (opts.onSkip) opts.onSkip(); };
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Assign';
+  saveBtn.style.cssText = "background:#E94D32;border:1.5px solid #E94D32;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;";
+  saveBtn.onclick = () => {
+    const val = select.value;
+    if (val === '__new__') {
+      showNewProjectModal({ isFL: true, onSave: (proj) => {
+        assignProjectToItem(itemId, proj.id);
+        overlay.remove();
+        if (opts.onAssign) opts.onAssign(proj.id);
+      }});
+    } else if (val) {
+      assignProjectToItem(itemId, val);
+      overlay.remove();
+      if (opts.onAssign) opts.onAssign(val);
+    } else {
+      select.style.borderColor = '#E94D32';
+    }
+  };
+  actions.appendChild(skipBtn);
+  actions.appendChild(saveBtn);
+  body.appendChild(actions);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); if (opts.onSkip) opts.onSkip(); } });
+  document.body.appendChild(overlay);
+}
+window.showProjectPicker = showProjectPicker;
+
+function assignProjectToItem(itemId, projectId) {
+  const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+  const it = items.find(i => i.id == itemId);
+  if (!it) return;
+  it.projectId = projectId;
+  const proj = getProject(projectId);
+  if (proj && proj.isFL) it.meta = 'fl';
+  if (typeof saveSortItems === 'function') saveSortItems(items);
+  if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+}
+window.assignProjectToItem = assignProjectToItem;
+
+function maybePromptForProject(itemId) {
+  const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+  const it = items.find(i => i.id == itemId);
+  if (!it) return;
+  if (it.meta !== 'fl') return;
+  if (it.projectId) return;
+  showProjectPicker(itemId);
+}
+window.maybePromptForProject = maybePromptForProject;
+
+// ══════════════════════════════════════════
+// ── ONE-TIME CLEANUP: STRIP OLD FL SUBCATEGORIES ──
+// Removes fl-admin/se-firemap/birdlocale/bobscapes/aquatics/chiram/anchor
+// from saved categories, SORT_ROUNDS, and items that already have a
+// projectId. Items keep the original value in `legacySubcategory` for
+// safety. Gated by 'fl_subcat_cleaned_v1' so it runs once.
+// ══════════════════════════════════════════
+(function cleanupOldFLSubcats() {
+  try {
+    if (localStorage.getItem('fl_subcat_cleaned_v1')) return;
+    const OLD = new Set(['fl-admin','se-firemap','birdlocale','bobscapes','aquatics','chiram','anchor']);
+
+    // 1. Clean saved categories (custom_sort_rounds_v1)
+    const CATS_LOCAL = 'custom_sort_rounds_v1';
+    const savedRaw = localStorage.getItem(CATS_LOCAL);
+    if (savedRaw) {
+      const saved = JSON.parse(savedRaw);
+      if (Array.isArray(saved)) {
+        const fl = saved.find(r => r && r.id === 'fl-sub');
+        if (fl && Array.isArray(fl.buckets)) {
+          fl.buckets = fl.buckets.filter(b => !OLD.has(b.key));
+        }
+        localStorage.setItem(CATS_LOCAL, JSON.stringify(saved));
+      }
+    }
+
+    // 2. Clean in-memory SORT_ROUNDS
+    if (typeof SORT_ROUNDS !== 'undefined') {
+      const fl = SORT_ROUNDS.find(r => r && r.id === 'fl-sub');
+      if (fl && Array.isArray(fl.buckets)) {
+        fl.buckets = fl.buckets.filter(b => !OLD.has(b.key));
+      }
+    }
+
+    // 3. Clean items: move old FL subcat to legacySubcategory if item is migrated
+    const itemsRaw = localStorage.getItem('sortAllItems_v2');
+    if (itemsRaw) {
+      const items = JSON.parse(itemsRaw);
+      let changed = false;
+      if (Array.isArray(items)) {
+        items.forEach(it => {
+          if (it && it.projectId && OLD.has(it.subcategory)) {
+            it.legacySubcategory = it.subcategory;
+            delete it.subcategory;
+            changed = true;
+          }
+        });
+        if (changed) localStorage.setItem('sortAllItems_v2', JSON.stringify(items));
+      }
+    }
+
+    localStorage.setItem('fl_subcat_cleaned_v1', '1');
+  } catch(e) { console.error('FL subcat cleanup failed', e); }
+})();
 
 </script>
 
