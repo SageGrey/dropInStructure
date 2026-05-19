@@ -14238,37 +14238,133 @@ function showLogHoursModal() {
     } else {
       dayItems.forEach(it => {
         const row = document.createElement('div');
-        row.style.cssText = "border-left:3px solid #5b8bd4;padding:6px 10px;background:rgba(48,28,29,0.03);display:flex;justify-content:space-between;align-items:center;gap:8px;";
-        const left = document.createElement('div');
-        left.style.cssText = 'flex:1;min-width:0;';
-        const txt = document.createElement('div');
-        txt.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;line-height:1.4;word-break:break-word;";
-        txt.textContent = it.text || '';
-        const meta = document.createElement('div');
-        meta.style.cssText = "font-family:'Space Mono',monospace;font-size:9px;color:rgba(48,28,29,0.5);letter-spacing:0.04em;margin-top:2px;";
-        const proj = it.projectId ? getProject(it.projectId) : null;
-        meta.textContent = (proj ? proj.name : '(no project)') + ' · ' + it.completedMins + 'm';
-        left.appendChild(txt);
-        left.appendChild(meta);
-        const del = document.createElement('button');
-        del.textContent = '×';
-        del.title = 'Remove this entry';
-        del.style.cssText = "background:none;border:none;color:rgba(48,28,29,0.35);cursor:pointer;font-size:18px;padding:0 8px;line-height:1;";
-        del.onmouseover = () => del.style.color = '#E94D32';
-        del.onmouseout = () => del.style.color = 'rgba(48,28,29,0.35)';
-        del.onclick = () => {
-          if (!confirm('Remove this log entry?')) return;
-          const allItems = loadSortItems();
-          const idx = allItems.findIndex(x => x.id === it.id);
-          if (idx >= 0) {
-            allItems.splice(idx, 1);
+        const DISPLAY_CSS = "border-left:3px solid #5b8bd4;padding:6px 10px;background:rgba(48,28,29,0.03);display:flex;justify-content:space-between;align-items:center;gap:8px;";
+        const EDIT_CSS    = "border-left:3px solid #F7B338;padding:8px 10px;background:rgba(247,179,56,0.10);display:flex;flex-direction:column;gap:6px;";
+        const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+        function renderDisplay() {
+          row.style.cssText = DISPLAY_CSS;
+          row.innerHTML = '';
+          const left = document.createElement('div');
+          left.style.cssText = 'flex:1;min-width:0;';
+          const txt = document.createElement('div');
+          txt.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;line-height:1.4;word-break:break-word;";
+          txt.textContent = it.text || '';
+          const meta = document.createElement('div');
+          meta.style.cssText = "font-family:'Space Mono',monospace;font-size:9px;color:rgba(48,28,29,0.5);letter-spacing:0.04em;margin-top:2px;";
+          const proj = it.projectId ? getProject(it.projectId) : null;
+          meta.textContent = (proj ? proj.name : '(no project)') + ' · ' + it.completedMins + 'm';
+          left.appendChild(txt); left.appendChild(meta);
+
+          const editBtn = document.createElement('button');
+          editBtn.textContent = '✎';
+          editBtn.title = 'Edit this entry';
+          editBtn.style.cssText = "background:none;border:none;color:rgba(48,28,29,0.4);cursor:pointer;font-size:14px;padding:0 6px;line-height:1;";
+          editBtn.onmouseover = () => editBtn.style.color = '#5b8bd4';
+          editBtn.onmouseout  = () => editBtn.style.color = 'rgba(48,28,29,0.4)';
+          editBtn.onclick = renderEdit;
+
+          const del = document.createElement('button');
+          del.textContent = '×';
+          del.title = 'Remove this entry';
+          del.style.cssText = "background:none;border:none;color:rgba(48,28,29,0.35);cursor:pointer;font-size:18px;padding:0 8px;line-height:1;";
+          del.onmouseover = () => del.style.color = '#E94D32';
+          del.onmouseout  = () => del.style.color = 'rgba(48,28,29,0.35)';
+          del.onclick = () => {
+            if (!confirm('Remove this log entry?')) return;
+            const allItems = loadSortItems();
+            const idx = allItems.findIndex(x => x.id === it.id);
+            if (idx >= 0) {
+              allItems.splice(idx, 1);
+              saveSortItems(allItems);
+              refresh();
+              try { renderSortedList(); } catch(e) {}
+            }
+          };
+          row.appendChild(left); row.appendChild(editBtn); row.appendChild(del);
+        }
+
+        function renderEdit() {
+          row.style.cssText = EDIT_CSS;
+          row.innerHTML = '';
+
+          // Project dropdown
+          const projSelEdit = document.createElement('select');
+          projSelEdit.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;cursor:pointer;";
+          const flProjects = getActiveFLProjects();
+          // Make sure the currently-assigned project is in the list even if completed.
+          const currentProj = it.projectId ? getProject(it.projectId) : null;
+          if (currentProj && !flProjects.find(p => p.id === currentProj.id)) flProjects.push(currentProj);
+          projSelEdit.innerHTML = '<option value="">— No project —</option>' +
+            flProjects.map(p => `<option value="${p.id}"${it.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+
+          // Task text
+          const txtInp = document.createElement('input');
+          txtInp.type = 'text';
+          txtInp.value = it.text || '';
+          txtInp.placeholder = 'What did you do?';
+          txtInp.style.cssText = "border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:6px 8px;outline:none;";
+
+          // Mins + actions row
+          const bottomRow = document.createElement('div');
+          bottomRow.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+          const minsInpEdit = document.createElement('input');
+          minsInpEdit.type = 'number';
+          minsInpEdit.value = it.completedMins || '';
+          minsInpEdit.min = '1';
+          minsInpEdit.placeholder = 'mins';
+          minsInpEdit.style.cssText = "width:90px;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:6px 8px;outline:none;";
+
+          const spacer = document.createElement('div');
+          spacer.style.flex = '1';
+
+          const cancelBtn = document.createElement('button');
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;";
+          cancelBtn.onclick = renderDisplay;
+
+          const saveBtn = document.createElement('button');
+          saveBtn.textContent = 'Save';
+          saveBtn.style.cssText = "background:#E94D32;border:1.5px solid #E94D32;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 12px;cursor:pointer;";
+          function doSave() {
+            const newText = txtInp.value.trim();
+            const newMins = parseInt(minsInpEdit.value);
+            const newProjId = projSelEdit.value || null;
+            if (!newText) { txtInp.style.borderColor = '#E94D32'; txtInp.focus(); return; }
+            if (!newMins || newMins < 1) { minsInpEdit.style.borderColor = '#E94D32'; minsInpEdit.focus(); return; }
+            const allItems = loadSortItems();
+            const target = allItems.find(x => x.id === it.id);
+            if (!target) return;
+            target.text = newText;
+            target.completedMins = newMins;
+            if (newProjId) {
+              target.projectId = newProjId;
+              const p = getProject(newProjId);
+              if (p && p.isFL) target.meta = 'fl';
+            } else {
+              delete target.projectId;
+            }
             saveSortItems(allItems);
             refresh();
             try { renderSortedList(); } catch(e) {}
           }
-        };
-        row.appendChild(left);
-        row.appendChild(del);
+          saveBtn.onclick = doSave;
+          txtInp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSave(); } if (e.key === 'Escape') renderDisplay(); });
+          minsInpEdit.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSave(); } if (e.key === 'Escape') renderDisplay(); });
+
+          bottomRow.appendChild(minsInpEdit);
+          bottomRow.appendChild(spacer);
+          bottomRow.appendChild(cancelBtn);
+          bottomRow.appendChild(saveBtn);
+
+          row.appendChild(projSelEdit);
+          row.appendChild(txtInp);
+          row.appendChild(bottomRow);
+
+          setTimeout(() => txtInp.focus(), 30);
+        }
+
+        renderDisplay();
         listContainer.appendChild(row);
       });
     }
