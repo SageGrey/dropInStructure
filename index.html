@@ -3391,6 +3391,7 @@
       <button class="ed-tab" onclick="edShowPane('ideas-cats', this)">Ideas Categories</button>
       <button class="ed-tab" onclick="edShowPane('people', this)">People</button>
       <button class="ed-tab" onclick="edShowPane('procedures', this)">Procedures</button>
+      <button class="ed-tab" onclick="edShowPane('migration', this)">FL Migration</button>
     </div>
 
     <!-- ROUTINES PANE -->
@@ -3447,6 +3448,10 @@
         Recurring checklist items for the Procedures tab. Drag the ⠿ handle to reorder.
       </div>
       <div id="ed-procedures-content"></div>
+    </div>
+
+    <div id="ed-pane-migration" class="ed-pane">
+      <div id="ed-migration-content"></div>
     </div>
   </div>
 
@@ -11810,6 +11815,7 @@ function edShowPane(name, btn) {
   if (name === 'ideas-cats') edRenderIdeasCategories();
   if (name === 'people') edRenderPeople();
   if (name === 'procedures') edRenderProcedures();
+  if (name === 'migration') edRenderMigration();
 }
 
 // ── Drag-to-reorder state ──
@@ -13397,6 +13403,453 @@ function edAttachProcDrag() {
       document.querySelectorAll('.ed-proc-row').forEach(r => r.style.borderTop = '');
     });
   });
+}
+
+// ══════════════════════════════════════════
+// ── FL BILLING DATA (from CSV) ──
+// Parsed from FL USDA Contract Drawdown CSV.
+// Source of truth for FL Category + Line Item dropdowns when creating Projects.
+// ══════════════════════════════════════════
+const FL_BILLING_DATA = [
+  { category: 'AQUATIC FRAMEWORK', lineItems: [
+    { name: 'Data Collection and Processing, For Coordinating Aquatic Framework', description: 'Data collection, cleaning, processing, analysis and data visualizations. Data collection from partner states to create strategic plan.' },
+    { name: 'Aqua Corridors Tool Suite', description: 'Developing decision Support Tool Suite to support the aquatic framework. Budget includes scoping, development, testing with focus groups, implementing changes, and finalizing.' },
+    { name: 'Webinar and Workshop Support', description: 'Supporting Workshops for Aquatics' },
+    { name: 'Framework Visuals and Posters', description: 'Graphics showcasing Conservation Practices in both print and interactive format for Framework and all associated initiatives. For framework report, posters and digital format.' },
+    { name: 'Framework Development and Presentation', description: 'Showcasing the Aquatic Corridor Framework Initiative Integration on posters, postcards, and web formats' },
+    { name: 'Learning Network Courses, Aquatic Framework', description: 'Development of Learning Network courses from webinars, materials related to Aquatic Framework' },
+  ]},
+  { category: 'SE FireMap & Wildfire', lineItems: [
+    { name: 'SE FireMap Support', description: 'Work with SE FireMap team to develop SE FireMap. Including proposed LEO integration into SE FireMap decision support tool, look into other ways to integrate these two data sources.' },
+    { name: 'SE FireMap Workshop Support', description: 'Workshop Support for SE FireMap Development and Release' },
+    { name: 'SE FireMap Presentation', description: 'Presentation of SE Firemap Support including website, fact sheets, graphics development, outreach materials' },
+    { name: 'Learning Network Courses and Wildland Fire Guide Development', description: 'Development of Learning Network Courses and Develop Wildfire Guide to a national info site.' },
+  ]},
+  { category: 'DECIDUOUS FOREST FRAMEWORK/GWWA INITIATIVE', lineItems: [
+    { name: 'Framework Space on WLFW Landscape Site', description: 'Updates to LP to host Deciduous Forest Framework Content, Data, and Related Content' },
+    { name: 'Framework Development', description: 'Graphics, Content and Analysis support for Eastern Deciduous Forest Initiative on WLFW Landscape Site' },
+    { name: 'Data Collection and Processing, Deciduous Framework', description: 'Data collection from partner states to create strategic plan. Work entails data collection, cleaning, processing, analysis and data visualizations.' },
+    { name: 'Decision Support Tools, Deciduous Framework', description: 'Creating a Decision Support Tool Suite to support framework efforts, modeled off of the AquaCorridors Tool Suite' },
+    { name: 'Webinar and Workshop Support', description: 'Supporting Workshops for Deciduous Forests' },
+    { name: 'Learning Network Courses, Deciduous Forests', description: 'Developing Learning Network Courses from content developed and related to framework, obtaining accreditation' },
+    { name: 'Assisting Modeling funded through Framework', description: 'Including support for Forest-Bird Landis Pro Modeling on LP Portal' },
+  ]},
+  { category: 'GRASSLANDS FRAMEWORK/BOBWHITE INITIATIVE', lineItems: [
+    { name: 'Framework Presentation', description: 'Framework/Landscape: Create media-friendly versions of Grasslands and Savannas Framework Plan and Related Content' },
+    { name: 'Connectivity Partnership', description: 'Scoping, development, feedback, and refinement of a Connectivity Partnership to enhance wildlife connectivity through collaborative planning and strategic investments' },
+    { name: 'Citizen Science Application', description: 'Framework/Wildlife: Data Exchange Flow and Processing. Supports Statistics and Tracking of Requests' },
+    { name: 'Grasslands Webinars', description: 'Support for Grasslands Webinars' },
+    { name: 'Bird Locale Feature Development, Research and App Replication', description: 'Development of additional features to support monitoring efforts and expanding scope of tool. Framework/Wildlife: UGA Project support for data management and storage on BirdLocale and Vegetation/Species Data.' },
+    { name: 'Developing the Learning Network', description: 'Developing, Marketing and Accrediting courses and platform for Bobwhite Initiatives' },
+    { name: 'Grasslands Mapping', description: 'Recover Process Supports for Analysis. Review Future Mapping Needs' },
+  ]},
+  { category: 'WLFW - COMMS', lineItems: [
+    { name: 'Learning Management Courses, Promoting Courses', description: 'Learning Management System: Developing Courses, accreditation, Supporting Training storage (non-framework)' },
+    { name: 'Training Development', description: 'Training Consulting and Development for all projects and frameworks on how to use tools built by FL' },
+    { name: 'Frameworks || Comms Strategy And Support', description: 'WLFW Framework Communication and Strategy Support: Webinar Support, Content Support, Web Support, LMS Support, Social Media, Newsletter/MailChimp Support' },
+    { name: 'WLFW EAST Connection', description: 'Outreach: Review WLFW-East and WLFW-West. Create splash page bifurcation, support cross linking' },
+    { name: 'Partner Outreach', description: 'Outreach: Work with Partners to prepare for an LP/WLFW conference in designated SE region to share and demonstrate WLFW projects, products and facilitate Stakeholder Engagement: Landowners, and Residents' },
+    { name: 'Publication Development', description: 'Outreach: Development and Publication for WLFW News and Announcements, LP News Briefs, Newsletters and Mailing Member Database Management from LP and requested lists and Stats.' },
+    { name: 'Landscape Partnerships || Comms Strategy And Support', description: 'Outreach: Business/marketing strategy for LP portal longevity, Partner Solicitation Points, and Illustrated Strategy Plan One pager.' },
+  ]},
+  { category: 'OTHER', lineItems: [
+    { name: 'Branding Support', description: 'Outreach: Revisit and streamline branding and marketing across initiatives' },
+    { name: 'Science Data Storage', description: 'Consulting Support for supporting new organizations moving into, repurposing, or building Apps, Maps, and Data. Including data storage workflow for CEAP projects.' },
+    { name: 'CWPRI Workgroup', description: 'Working Groups: Collaborative Wildlife Protection and Recover Initiative (CWPRI) Workgroups' },
+  ]},
+  { category: 'BACK-END HOSTING/SUPPORT', lineItems: [
+    { name: 'Day-to-Day User Support, Site, and Workspace Development. Maintenance and Troubleshooting', description: '' },
+    { name: 'Server/Software updates & security updates on LP and Learning Network.', description: '' },
+    { name: 'Advanced IT, Troubleshooting all servers, Adding portal elements, plugins, functionality and/or service for Plone/LMS/GIS/software.', description: '' },
+    { name: 'Stats Management on all sites and applications.', description: '' },
+    { name: 'Server/Software & Backup Support on ESRI.', description: '' },
+    { name: 'Learning Network. Server Support Backup LP, WLFW. And Troubleshooting', description: '' },
+    { name: 'Citizen Science Tool: Server/Software and User Support on mobile app (AWS, Apple, Android). Includes troubleshooting', description: '' },
+    { name: 'BirdLocale: Server/Software and User Support on Bird Locale Web app (AWS). Includes troubleshooting', description: '' },
+    { name: 'Landscape Partnership: Server and Software support Backups and Storage management on AWS. Includes troubleshooting', description: '' },
+    { name: 'Server/Software & Backup Support on Posit/Rshiny (Literature Gateway, GCT Numbers)', description: '' },
+  ]},
+  { category: 'FRONT END CONTENT MANAGEMENT', lineItems: [
+    { name: 'Learning Network.', description: '' },
+    { name: 'Social Media Development: TikTok, FB, LinkedIn, YouTube for Outreach, Robust Landowner/Tech Interaction, and Clarity of products, initiatives.', description: '' },
+    { name: 'Technical Writing, Visual Presentation, and Graphics.', description: '' },
+    { name: 'Managing in-process content not hosted on LP', description: '' },
+  ]},
+  { category: 'PROJECT MANAGEMENT', lineItems: [
+    { name: 'Conference Calls / Team Meetings / Communications / Partners Support.', description: '' },
+    { name: 'Administration, Project Management, Analytics, R&D, Review and Strategy Planning.', description: '' },
+    { name: 'General Project Management (Asana Task Management)', description: '' },
+  ]},
+  { category: 'TRAININGS', lineItems: [
+    { name: 'Training and knowledgebase resources / documents / videos. Help documentation.', description: '' },
+  ]},
+  // ── Extra categories (not in CSV) ──
+  { category: 'Unsorted',         lineItems: [] },
+  { category: 'LP-ANCHOR',        lineItems: [] },
+  { category: 'Work Development', lineItems: [] },
+];
+
+function flCategoryNames() { return FL_BILLING_DATA.map(c => c.category); }
+function flLineItemsFor(category) {
+  const c = FL_BILLING_DATA.find(c => c.category === category);
+  return c ? c.lineItems : [];
+}
+
+// ══════════════════════════════════════════
+// ── PROJECTS ──
+// New top-level concept: a Project owns billing detail (CSV Category +
+// Line Item) and items are tagged with projectId. Replaces the old
+// FL subcategory tagging (fl-admin/anchor/etc.) over time.
+// ══════════════════════════════════════════
+const PROJECTS_KEY = 'projects_v1';
+
+function loadProjects() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROJECTS_KEY));
+    if (Array.isArray(saved)) return saved;
+  } catch {}
+  return [];
+}
+function saveProjects(arr) {
+  try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(arr)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+function getProject(id) {
+  return loadProjects().find(p => p.id === id) || null;
+}
+function getActiveFLProjects() {
+  return loadProjects().filter(p => p.isFL && !p.completed);
+}
+function createProject(data) {
+  const projects = loadProjects();
+  const id = 'proj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const proj = {
+    id,
+    name: data.name || 'Untitled Project',
+    isFL: !!data.isFL,
+    csvCategory: data.csvCategory || null,
+    csvLineItem: data.csvLineItem || null,
+    completed: false,
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+  };
+  projects.push(proj);
+  saveProjects(projects);
+  return proj;
+}
+function completeProjectById(id) {
+  const projects = loadProjects();
+  const p = projects.find(p => p.id === id);
+  if (!p) return;
+  p.completed = true;
+  p.completedAt = new Date().toISOString();
+  saveProjects(projects);
+}
+window.completeProjectById = completeProjectById;
+
+// ══════════════════════════════════════════
+// ── NEW PROJECT MODAL ──
+// Single-form modal. Use for project creation anywhere in the app.
+//   showNewProjectModal({ isFL: true, onSave: (project) => {...} })
+// ══════════════════════════════════════════
+function showNewProjectModal(opts) {
+  opts = Object.assign({ isFL: true, onSave: null, onCancel: null }, opts || {});
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#FFFEE7;max-width:520px;width:100%;border:2px solid #301C1D;padding:0;max-height:90vh;overflow-y:auto;';
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.style.cssText = "background:#F7B338;padding:14px 18px;font-family:'Archivo Black',sans-serif;font-size:16px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;";
+  hdr.innerHTML = '<span>New Project</span>';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = 'background:none;border:none;color:#E94D32;font-size:24px;cursor:pointer;padding:0;line-height:1;';
+  closeBtn.onclick = () => { overlay.remove(); if (opts.onCancel) opts.onCancel(); };
+  hdr.appendChild(closeBtn);
+  box.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'padding:18px;display:flex;flex-direction:column;gap:14px;';
+  box.appendChild(body);
+
+  const labelStyle = "font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.55);margin-bottom:4px;";
+  const inputStyle = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:14px;padding:8px 10px;outline:none;box-sizing:border-box;";
+
+  // Name
+  const nameWrap = document.createElement('div');
+  nameWrap.innerHTML = `<div style="${labelStyle}">Project Name</div>`;
+  const nameInp = document.createElement('input');
+  nameInp.type = 'text';
+  nameInp.placeholder = 'e.g. SE FireMap Phase 2';
+  nameInp.style.cssText = inputStyle;
+  nameWrap.appendChild(nameInp);
+  body.appendChild(nameWrap);
+
+  // FL toggle (currently always FL for migration; keep as a checkbox for future use)
+  const flWrap = document.createElement('label');
+  flWrap.style.cssText = "display:flex;gap:8px;align-items:center;cursor:pointer;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;";
+  const flChk = document.createElement('input');
+  flChk.type = 'checkbox';
+  flChk.checked = opts.isFL;
+  flChk.style.cssText = 'accent-color:#E94D32;width:16px;height:16px;cursor:pointer;';
+  flWrap.appendChild(flChk);
+  flWrap.appendChild(document.createTextNode('Ferguson Lynch project (billable)'));
+  body.appendChild(flWrap);
+
+  // FL fields container (shown when FL is checked)
+  const flFields = document.createElement('div');
+  flFields.style.cssText = 'display:flex;flex-direction:column;gap:14px;border-left:3px solid #5b8bd4;padding-left:14px;';
+
+  // Category dropdown
+  const catWrap = document.createElement('div');
+  catWrap.innerHTML = `<div style="${labelStyle}">FL Category</div>`;
+  const catSel = document.createElement('select');
+  catSel.style.cssText = inputStyle;
+  catSel.innerHTML = '<option value="">— Pick a category —</option>' +
+    flCategoryNames().map(c => `<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('');
+  catWrap.appendChild(catSel);
+  flFields.appendChild(catWrap);
+
+  // Line item dropdown
+  const liWrap = document.createElement('div');
+  liWrap.innerHTML = `<div style="${labelStyle}">Line Item <span id="np-li-hint" style="text-transform:none;letter-spacing:0;color:rgba(48,28,29,0.4);font-size:9px;margin-left:6px;"></span></div>`;
+  const liSel = document.createElement('select');
+  liSel.style.cssText = inputStyle;
+  liSel.innerHTML = '<option value="">— Pick category first —</option>';
+  liSel.disabled = true;
+  liWrap.appendChild(liSel);
+  const liDesc = document.createElement('div');
+  liDesc.style.cssText = "margin-top:6px;font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.6);line-height:1.5;font-style:italic;min-height:18px;";
+  liWrap.appendChild(liDesc);
+  flFields.appendChild(liWrap);
+
+  catSel.addEventListener('change', () => {
+    const items = flLineItemsFor(catSel.value);
+    liSel.innerHTML = '<option value="">— Pick a line item —</option>' +
+      items.map((li, i) => `<option value="${i}">${li.name.replace(/</g,'&lt;')}</option>`).join('');
+    liSel.disabled = items.length === 0;
+    liDesc.textContent = '';
+  });
+  liSel.addEventListener('change', () => {
+    const items = flLineItemsFor(catSel.value);
+    const idx = parseInt(liSel.value);
+    const li = !isNaN(idx) ? items[idx] : null;
+    liDesc.textContent = li && li.description ? '“' + li.description + '”' : '';
+  });
+
+  body.appendChild(flFields);
+
+  flChk.addEventListener('change', () => {
+    flFields.style.display = flChk.checked ? '' : 'none';
+  });
+
+  // Actions
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding-top:6px;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 16px;cursor:pointer;";
+  cancelBtn.onclick = () => { overlay.remove(); if (opts.onCancel) opts.onCancel(); };
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Create Project';
+  saveBtn.style.cssText = "background:#E94D32;border:1.5px solid #E94D32;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 16px;cursor:pointer;";
+  saveBtn.onclick = () => {
+    const name = nameInp.value.trim();
+    if (!name) { nameInp.style.borderColor = '#E94D32'; nameInp.focus(); return; }
+    const isFL = flChk.checked;
+    let csvCategory = null, csvLineItem = null;
+    if (isFL) {
+      csvCategory = catSel.value || null;
+      const items = flLineItemsFor(catSel.value);
+      const idx = parseInt(liSel.value);
+      csvLineItem = !isNaN(idx) && items[idx] ? items[idx].name : null;
+      // Category is always required. Line item is required only when the
+      // selected category actually has line items (Unsorted / LP-ANCHOR /
+      // Work Development have none, so a line item is not required).
+      if (!csvCategory) { catSel.style.borderColor = '#E94D32'; return; }
+      if (items.length > 0 && !csvLineItem) { liSel.style.borderColor = '#E94D32'; return; }
+    }
+    const proj = createProject({ name, isFL, csvCategory, csvLineItem });
+    overlay.remove();
+    if (opts.onSave) opts.onSave(proj);
+  };
+  actions.appendChild(cancelBtn);
+  actions.appendChild(saveBtn);
+  body.appendChild(actions);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); if (opts.onCancel) opts.onCancel(); } });
+  document.body.appendChild(overlay);
+  setTimeout(() => nameInp.focus(), 50);
+}
+window.showNewProjectModal = showNewProjectModal;
+
+// ══════════════════════════════════════════
+// ── FL MIGRATION TOOL ──
+// Lists FL items needing migration (completed >= 2026-05-01 OR open),
+// grouped by their old subcategory. Each item gets a project dropdown
+// with inline "+ New Project..." access.
+// ══════════════════════════════════════════
+const MIGRATION_CUTOFF = '2026-05-01';
+
+function migrationNeedsItem(it) {
+  if (it.projectId) return false; // already migrated
+  // FL = either meta='fl' or one of the old FL subcategories
+  const FL_OLD = new Set(['fl-admin','se-firemap','birdlocale','bobscapes','aquatics','chiram','anchor']);
+  const isFL = it.meta === 'fl' || FL_OLD.has(it.subcategory);
+  if (!isFL) return false;
+  if (!it.listCompleted) return true; // open
+  return (it.completedOn || '') >= MIGRATION_CUTOFF;
+}
+
+function edRenderMigration() {
+  const wrap = document.getElementById('ed-migration-content');
+  if (!wrap) return;
+  const items = (typeof loadSortItems === 'function' ? loadSortItems() : []);
+  const needing = items.filter(migrationNeedsItem);
+  const totalFL = items.filter(it => {
+    const FL_OLD = new Set(['fl-admin','se-firemap','birdlocale','bobscapes','aquatics','chiram','anchor']);
+    return it.meta === 'fl' || FL_OLD.has(it.subcategory);
+  }).length;
+  const migrated = totalFL - needing.length;
+  const projects = loadProjects();
+  const activeFL = getActiveFLProjects();
+  const completedFL = projects.filter(p => p.isFL && p.completed);
+
+  // Group needing items by old subcategory (fallback to '(no subcat)')
+  const groups = {};
+  needing.forEach(it => {
+    const k = it.subcategory || '(no subcat — meta only)';
+    (groups[k] = groups[k] || []).push(it);
+  });
+  const groupKeys = Object.keys(groups).sort();
+
+  const projOptions = activeFL.map(p =>
+    `<option value="${p.id}">${escapeHtml(p.name)} — ${escapeHtml(p.csvCategory)}${p.csvLineItem ? ' › ' + escapeHtml(p.csvLineItem) : ''}</option>`
+  ).join('');
+
+  wrap.innerHTML = `
+    <div style="background:#FFFEE7;border:2px solid #301C1D;padding:14px 16px;margin-bottom:14px;">
+      <div style="font-family:'Archivo Black',sans-serif;font-size:14px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;">FL Migration</div>
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.6);line-height:1.55;">
+        Move FL items off the old subcategory tags (fl-admin, ANCHOR, etc.) onto the new Project system.<br>
+        Scope: items completed on or after <strong>${MIGRATION_CUTOFF}</strong> + all open FL items.<br>
+        Old <code>subcategory</code> field is preserved so nothing is destroyed — only <code>projectId</code> is added.
+      </div>
+      <div style="margin-top:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+        <button id="mig-new-proj" style="background:#E94D32;border:1.5px solid #E94D32;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;">+ New Project</button>
+        <div style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.55);letter-spacing:0.06em;">
+          Migrated: <strong style="color:#7FA497;">${migrated}</strong> / ${totalFL} &nbsp;·&nbsp; Active projects: <strong>${activeFL.length}</strong>${completedFL.length ? ` &nbsp;·&nbsp; Completed: ${completedFL.length}` : ''}
+        </div>
+      </div>
+    </div>
+
+    ${needing.length === 0 ? `
+      <div style="background:#FFFEE7;border:2px solid #7FA497;padding:18px;text-align:center;font-family:'Space Mono',monospace;font-size:13px;color:#301C1D;">
+        ✓ All FL items in scope are migrated. Nothing left to do here.
+      </div>
+    ` : groupKeys.map(gk => `
+      <div style="background:#FFFEE7;border:1.5px solid rgba(48,28,29,0.18);margin-bottom:12px;">
+        <div style="background:rgba(91,139,212,0.12);padding:8px 14px;font-family:'Archivo Black',sans-serif;font-size:12px;color:#301C1D;letter-spacing:0.08em;text-transform:uppercase;">
+          ${escapeHtml(gk)} <span style="opacity:0.5;font-family:'Space Mono',monospace;font-weight:normal;letter-spacing:0.04em;">(${groups[gk].length})</span>
+        </div>
+        <div style="padding:8px;">
+          ${groups[gk].map(it => `
+            <div class="mig-row" data-item-id="${it.id}" style="border-bottom:1px solid rgba(48,28,29,0.08);padding:10px 8px;display:flex;flex-direction:column;gap:6px;">
+              <div style="font-family:'Space Mono',monospace;font-size:13px;color:#301C1D;line-height:1.4;">${escapeHtml(it.text || '')}</div>
+              <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.5);letter-spacing:0.06em;">
+                ${it.listCompleted ? `completed ${escapeHtml(it.completedOn || '')}${it.completedMins ? ` · ${it.completedMins}m` : ''}` : 'open'}
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <select class="mig-proj-sel" data-item-id="${it.id}" style="flex:1;min-width:220px;border:1.5px solid rgba(48,28,29,0.25);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;">
+                  <option value="">— Pick project —</option>
+                  ${projOptions}
+                  <option value="__new__">+ New Project…</option>
+                </select>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('')}
+
+    ${activeFL.length ? `
+      <div style="margin-top:18px;">
+        <div style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#F7B338;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0;">Active FL Projects</div>
+        ${activeFL.map(p => {
+          const assigned = items.filter(it => it.projectId === p.id).length;
+          return `
+            <div style="background:#FFFEE7;border:1.5px solid rgba(48,28,29,0.18);padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:240px;">
+                <div style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;letter-spacing:0.04em;">${escapeHtml(p.name)}</div>
+                <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.6);margin-top:3px;">${escapeHtml(p.csvCategory)}${p.csvLineItem ? ' › ' + escapeHtml(p.csvLineItem) : ''}</div>
+                <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.45);margin-top:2px;letter-spacing:0.04em;">${assigned} item${assigned === 1 ? '' : 's'}</div>
+              </div>
+              <button onclick="migrationCompleteProject('${p.id}')" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">Complete Project</button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : ''}
+  `;
+
+  // Wire up the "+ New Project" header button
+  const newBtn = document.getElementById('mig-new-proj');
+  if (newBtn) newBtn.onclick = () => {
+    showNewProjectModal({ isFL: true, onSave: () => edRenderMigration() });
+  };
+
+  // Wire up per-row project selects
+  wrap.querySelectorAll('.mig-proj-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const itemId = sel.dataset.itemId;
+      const val = sel.value;
+      if (val === '__new__') {
+        sel.value = '';
+        showNewProjectModal({
+          isFL: true,
+          onSave: (proj) => { migrationAssignProject(itemId, proj.id); },
+          onCancel: () => { sel.value = ''; },
+        });
+      } else if (val) {
+        migrationAssignProject(itemId, val);
+      }
+    });
+  });
+}
+window.edRenderMigration = edRenderMigration;
+
+function migrationAssignProject(itemId, projectId) {
+  const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+  const it = items.find(i => i.id == itemId);
+  if (!it) return;
+  const proj = getProject(projectId);
+  if (!proj) return;
+  it.projectId = projectId;
+  // Ensure meta reflects FL-ness from the project
+  if (proj.isFL) it.meta = 'fl';
+  if (typeof saveSortItems === 'function') saveSortItems(items);
+  edRenderMigration();
+}
+window.migrationAssignProject = migrationAssignProject;
+
+function migrationCompleteProject(id) {
+  const p = getProject(id);
+  if (!p) return;
+  if (!confirm(`Mark "${p.name}" as completed? It won't show up in future project dropdowns, but existing items keep their assignment.`)) return;
+  completeProjectById(id);
+  edRenderMigration();
+}
+window.migrationCompleteProject = migrationCompleteProject;
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 </script>
