@@ -4815,7 +4815,7 @@
 
     el.innerHTML = '';
 
-    // Project view: small action bar with "+ New Project"
+    // Project view: small action bar with "+ New Project" + "Export CSV"
     if (view.field === 'projectId') {
       const actions = document.createElement('div');
       actions.style.cssText = 'width:100%;padding:0 4px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
@@ -4828,6 +4828,12 @@
         }
       };
       actions.appendChild(addBtn);
+      const exportBtn = document.createElement('button');
+      exportBtn.textContent = '↓ Export CSV';
+      exportBtn.title = 'Download all active projects (name, client, category, line item, description)';
+      exportBtn.style.cssText = "background:none;border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.7);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:7px 12px;cursor:pointer;";
+      exportBtn.onclick = () => { if (typeof downloadProjectsCSV === 'function') downloadProjectsCSV(); };
+      actions.appendChild(exportBtn);
       if (buckets.length === 0) {
         const hint = document.createElement('div');
         hint.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.45);letter-spacing:0.06em;";
@@ -10062,7 +10068,7 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
       else map.set(k, { ...r, _origKey: k });
     });
 
-    // Apply overrides
+    // Apply overrides — legacy unified-log rows have no lineItem/projectName
     const edits = loadBillableEdits();
     const result = [];
     map.forEach((row) => {
@@ -10070,15 +10076,48 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
       if (ov && ov._deleted) return; // skip deleted
       result.push({
         ...row,
+        lineItem:    '',
+        projectName: '',
         date: (ov && ov.date) ? ov.date : row.date,
         mins: (ov && ov.mins != null) ? ov.mins : row.mins,
         desc: (ov && ov.desc != null) ? ov.desc : row.desc,
       });
     });
 
+    // ── FL items from the Sorted List / Log Hours modal ──
+    // Each completed FL item with completedMins becomes its own billable row.
+    if (typeof loadSortItems === 'function') {
+      const items = loadSortItems();
+      items.forEach(it => {
+        if (!it.listCompleted) return;
+        if (!it.completedOn) return;
+        if (typeof it.completedMins !== 'number' || it.completedMins <= 0) return;
+        const proj = (it.projectId && typeof getProject === 'function') ? getProject(it.projectId) : null;
+        const isFL = it.meta === 'fl' || (proj && proj.isFL);
+        if (!isFL) return;
+        const origKey = 'flItem|' + it.id;
+        const ov = edits[origKey] || {};
+        if (ov._deleted) return;
+        result.push({
+          _origKey:    origKey,
+          _source:     'flItem',
+          date:        ov.date || it.completedOn,
+          client:      'WLFW',
+          project:     proj ? (proj.csvCategory || '') : '',
+          lineItem:    proj ? (proj.csvLineItem || '') : '',
+          projectName: proj ? (proj.name || '') : '',
+          desc:        ov.desc != null ? ov.desc : (it.text || ''),
+          mins:        ov.mins != null ? ov.mins : it.completedMins,
+        });
+      });
+    }
+
     // Also include manually-added rows (not from unified log)
     const extras = edits['__extras'] || [];
-    extras.forEach(r => { if (!r._deleted) result.push({ ...r, _origKey: '__extras|' + r._id }); });
+    extras.forEach(r => {
+      if (r._deleted) return;
+      result.push({ lineItem:'', projectName:'', ...r, _origKey: '__extras|' + r._id });
+    });
 
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -10126,12 +10165,14 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
 
       // Normal display cells
       const cells = [
-        { val: r.date,    extra: 'color:rgba(48,28,29,0.5)' },
-        { val: r.client,  extra: '' },
-        { val: r.project, extra: '' },
-        { val: r.desc,    extra: '' },
-        { val: r.mins,    extra: 'text-align:right' },
-        { val: (Number(r.mins)/60).toFixed(1), extra: 'text-align:right' },
+        { val: r.date,                          extra: 'color:rgba(48,28,29,0.5)' },
+        { val: r.client,                        extra: '' },
+        { val: r.project,                       extra: '' },
+        { val: r.lineItem || '',                extra: 'font-size:11px;color:rgba(48,28,29,0.7)' },
+        { val: r.projectName || '',             extra: '' },
+        { val: r.desc,                          extra: '' },
+        { val: r.mins,                          extra: 'text-align:right' },
+        { val: (Number(r.mins)/60).toFixed(1),  extra: 'text-align:right' },
       ];
       cells.forEach(c => {
         const td = document.createElement('td');
@@ -10162,13 +10203,15 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
       <th style="${thS}">Date</th>
       <th style="${thS}">Client</th>
       <th style="${thS}">Project</th>
+      <th style="${thS}">Line Item</th>
+      <th style="${thS}">Project Name</th>
       <th style="${thS}">Description</th>
       <th style="${thS};text-align:right">Min</th>
       <th style="${thS};text-align:right">Hours</th>
       <th style="${thS}"></th>
     </tr></thead>
     <tfoot><tr style="background:#f5f5f0;">
-      <td colspan="4" style="${tdS};font-weight:bold">Total</td>
+      <td colspan="6" style="${tdS};font-weight:bold">Total</td>
       <td style="${tdS};text-align:right;font-weight:bold">${totalMins}</td>
       <td style="${tdS};text-align:right;font-weight:bold">${totalHrs}</td>
       <td style="${tdS}"></td>
@@ -10251,9 +10294,11 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
 
   function downloadBillableCSV() {
     const rows = collectBillableRows();
-    let csv = 'date,client,project,description,minutes\n';
+    const q = s => '"' + String(s == null ? '' : s).replace(/"/g, "'") + '"';
+    let csv = 'date,client,project,line_item,project_name,description,minutes,hours\n';
     rows.forEach(r => {
-      csv += `${r.date},"${r.client}","${r.project}","${r.desc.replace(/"/g,"'")}",${r.mins}\n`;
+      const hrs = (Number(r.mins) / 60).toFixed(2);
+      csv += `${r.date},${q(r.client)},${q(r.project)},${q(r.lineItem || '')},${q(r.projectName || '')},${q(r.desc)},${r.mins},${hrs}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -13661,6 +13706,33 @@ function completeProjectById(id) {
 }
 window.completeProjectById = completeProjectById;
 
+// Export all active projects to CSV — useful for sharing the billing
+// structure with collaborators ("anything you do on Project X bills here").
+function downloadProjectsCSV() {
+  const active = loadProjects().filter(p => !p.completed);
+  const q = s => '"' + String(s == null ? '' : s).replace(/"/g, "'") + '"';
+  let csv = 'project_name,client,category,line_item,description\n';
+  active.forEach(p => {
+    let desc = '';
+    if (p.csvCategory && p.csvLineItem) {
+      const cat = FL_BILLING_DATA.find(c => c.category === p.csvCategory);
+      if (cat) {
+        const li = cat.lineItems.find(l => l.name === p.csvLineItem);
+        if (li) desc = li.description || '';
+      }
+    }
+    const client = p.isFL ? 'WLFW' : '';
+    csv += `${q(p.name)},${q(client)},${q(p.csvCategory || '')},${q(p.csvLineItem || '')},${q(desc)}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'projects.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+window.downloadProjectsCSV = downloadProjectsCSV;
+
 // ══════════════════════════════════════════
 // ── NEW PROJECT MODAL ──
 // Single-form modal. Use for project creation anywhere in the app.
@@ -13893,7 +13965,10 @@ function edRenderMigration() {
 
     ${activeFL.length ? `
       <div style="margin-top:18px;">
-        <div style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#F7B338;letter-spacing:0.1em;text-transform:uppercase;padding:8px 0;">Active FL Projects</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;gap:8px;flex-wrap:wrap;">
+          <div style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#F7B338;letter-spacing:0.1em;text-transform:uppercase;">Active FL Projects</div>
+          <button onclick="downloadProjectsCSV()" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;">↓ Export CSV</button>
+        </div>
         ${activeFL.map(p => {
           const assigned = items.filter(it => it.projectId === p.id).length;
           return `
