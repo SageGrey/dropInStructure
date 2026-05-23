@@ -6533,13 +6533,26 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     if (!item) { document.getElementById('sl-completion-modal').style.display = 'none'; return; }
     const mins = parseInt(document.getElementById('sl-comp-mins').value) || null;
     item.listCompleted = true;
-    item.completedOn   = _slPendingDate || null;
+    // Normalize to YYYY-MM-DD so billable grouping and Past Logs both work.
+    let _normDate = _slPendingDate || null;
+    if (_normDate && _normDate.includes('/')) {
+      const parts = _normDate.split('/');
+      if (parts.length === 3) {
+        const yy = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+        _normDate = yy + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+      }
+    }
+    item.completedOn   = _normDate;
     item.completedMins = mins;
     item.completedAt   = item.completedAt || new Date().toISOString();
     saveSortItems(sortAllItems);
 
-    // Add to billable if FL
-    if (item.meta === 'fl' && mins && _slPendingDate) {
+    // Add to billable if FL.
+    // Items with projectId are picked up directly from loadSortItems()
+    // by collectBillableRows(), so we skip the unified-log path for them
+    // (the unified-log path doesn't know about projects and would create
+    // a duplicate row with stale 'FL' project info).
+    if (item.meta === 'fl' && mins && _slPendingDate && !item.projectId) {
       slAddToBillable(item, mins, _slPendingDate);
     }
 
@@ -6562,8 +6575,16 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
   // log entries in the unified log. Uses FL_CLIENTS mapping for
   // client attribution. Entries appear in the Billable tab's CSV export.
   function slAddToBillable(item, mins, dateStr) {
-    const client  = FL_CLIENTS[item.subcategory] || 'WLFW';
-    const project = item.subcategory ? item.subcategory.replace(/-/g,' ').replace(/\b\w/g,ch=>ch.toUpperCase()) : 'FL';
+    // Prefer project info (post-migration). Fall back to legacy subcategory.
+    let client, project;
+    const proj = (item.projectId && typeof getProject === 'function') ? getProject(item.projectId) : null;
+    if (proj) {
+      client  = proj.isFL ? 'WLFW' : '';
+      project = proj.csvCategory || proj.name || 'FL';
+    } else {
+      client  = FL_CLIENTS[item.subcategory] || 'WLFW';
+      project = item.subcategory ? item.subcategory.replace(/-/g,' ').replace(/\b\w/g,ch=>ch.toUpperCase()) : 'FL';
+    }
     // Format date as YYYY-MM-DD (unified log key format)
     const parts = dateStr.split('/');
     let dateKey = dateStr;
@@ -10042,12 +10063,29 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     try { localStorage.setItem(BILLABLE_EDITS_KEY, JSON.stringify(edits)); } catch {}
   }
 
+  // Normalize a date string to YYYY-MM-DD. Accepts ISO already
+  // (YYYY-MM-DD or YYYY-MM-DDTHH...) and legacy M/D/YY (or MM/DD/YYYY).
+  function normalizeDateStr(d) {
+    if (!d) return '';
+    const s = String(d);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    if (s.includes('/')) {
+      const parts = s.split('/');
+      if (parts.length === 3) {
+        let yy = parts[2];
+        if (yy.length === 2) yy = '20' + yy;
+        return yy + '-' + parts[0].padStart(2, '0') + '-' + parts[1].padStart(2, '0');
+      }
+    }
+    return s;
+  }
+
   function collectBillableRows() {
     const log = loadUnifiedLog();
     const raw = [];
     Object.keys(log).sort().forEach(key => {
       if (!key.includes('_focus')) return;
-      const date = key.split('_')[0];
+      const date = normalizeDateStr(key.split('_')[0]);
       const entry = log[key];
       Object.keys(entry).sort().forEach(hk => {
         if (!hk.startsWith('h')) return;
@@ -10101,7 +10139,7 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
         result.push({
           _origKey:    origKey,
           _source:     'flItem',
-          date:        ov.date || it.completedOn,
+          date:        normalizeDateStr(ov.date || it.completedOn),
           client:      'WLFW',
           project:     proj ? (proj.csvCategory || '') : '',
           lineItem:    proj ? (proj.csvLineItem || '') : '',
@@ -14453,6 +14491,92 @@ function showLogHoursModal() {
   setTimeout(() => projSel.focus(), 50);
 }
 window.showLogHoursModal = showLogHoursModal;
+
+// ══════════════════════════════════════════
+// ── ONE-TIME BACKFILL: NORMALIZE completedOn DATES ──
+// The FL completion prompt historically wrote completedOn as "M/D/YY"
+// (e.g., "5/1/26"). The Log Hours modal and billable code want
+// "YYYY-MM-DD". Convert any legacy values on items.
+// ══════════════════════════════════════════
+(function normalizeCompletedOnDates() {
+  try {
+    if (localStorage.getItem('completedOn_iso_v1')) return;
+    const raw = localStorage.getItem('sortAllItems_v2');
+    if (!raw) { localStorage.setItem('completedOn_iso_v1', '1'); return; }
+    const items = JSON.parse(raw);
+    if (!Array.isArray(items)) { localStorage.setItem('completedOn_iso_v1', '1'); return; }
+    let changed = false;
+    items.forEach(it => {
+      if (!it || !it.completedOn) return;
+      const before = String(it.completedOn);
+      if (/^\d{4}-\d{2}-\d{2}/.test(before)) return; // already ISO
+      if (before.includes('/')) {
+        const parts = before.split('/');
+        if (parts.length === 3) {
+          let yy = parts[2]; if (yy.length === 2) yy = '20' + yy;
+          it.completedOn = yy + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0');
+          changed = true;
+        }
+      }
+    });
+    if (changed) localStorage.setItem('sortAllItems_v2', JSON.stringify(items));
+    localStorage.setItem('completedOn_iso_v1', '1');
+  } catch(e) { console.error('completedOn normalize failed', e); }
+})();
+
+// ══════════════════════════════════════════
+// ── ONE-TIME CLEANUP: STRIP DUPLICATE UNIFIED-LOG BILLABLE ENTRIES ──
+// slAddToBillable used to write a row into the unified log with stale
+// 'FL' project info. After migration, the same item is also picked up
+// directly via loadSortItems(), creating a duplicate billable row with
+// garbage project data. Strip the stale unified-log copies.
+// ══════════════════════════════════════════
+(function cleanupDuplicateBillableEntries() {
+  try {
+    if (localStorage.getItem('billable_dedupe_v1')) return;
+    const itemsRaw = localStorage.getItem('sortAllItems_v2');
+    if (!itemsRaw) { localStorage.setItem('billable_dedupe_v1', '1'); return; }
+    const items = JSON.parse(itemsRaw);
+    if (!Array.isArray(items)) { localStorage.setItem('billable_dedupe_v1', '1'); return; }
+    // Build lookup of project-assigned completed items: "date|desc|mins" → true
+    const dupeKeys = new Set();
+    items.forEach(it => {
+      if (!it.projectId) return;
+      if (!it.listCompleted || !it.completedOn) return;
+      if (typeof it.completedMins !== 'number' || it.completedMins <= 0) return;
+      const txt = (it.text || '');
+      const k1 = it.completedOn + '|' + txt + '|' + it.completedMins;
+      // Match on title-cased / sentence-cased variants too
+      const k2 = it.completedOn + '|' + txt.charAt(0).toUpperCase() + txt.slice(1) + '|' + it.completedMins;
+      dupeKeys.add(k1);
+      dupeKeys.add(k2);
+    });
+    // Walk the unified log and remove matching billable items
+    const UL_KEY = 'unified_log_v1';
+    const ulRaw = localStorage.getItem(UL_KEY);
+    if (!ulRaw) { localStorage.setItem('billable_dedupe_v1', '1'); return; }
+    const log = JSON.parse(ulRaw);
+    let changed = false;
+    Object.keys(log).forEach(key => {
+      if (!key.includes('_focus')) return;
+      const date = key.split('_')[0];
+      const entry = log[key];
+      Object.keys(entry).forEach(hk => {
+        if (!hk.startsWith('h')) return;
+        const sec = entry[hk];
+        if (!sec || !Array.isArray(sec.items)) return;
+        const before = sec.items.length;
+        sec.items = sec.items.filter(li => {
+          const k = date + '|' + (li.desc || '') + '|' + (li.mins || 0);
+          return !dupeKeys.has(k);
+        });
+        if (sec.items.length !== before) changed = true;
+      });
+    });
+    if (changed) localStorage.setItem(UL_KEY, JSON.stringify(log));
+    localStorage.setItem('billable_dedupe_v1', '1');
+  } catch(e) { console.error('Billable dedupe failed', e); }
+})();
 
 // ══════════════════════════════════════════
 // ── ONE-TIME CLEANUP: STRIP OLD FL SUBCATEGORIES ──
