@@ -2007,7 +2007,8 @@
   <button onclick="showSection('highlights', this)" style="display:none">Highlights</button>
   <button onclick="openBillableTab(this)">Billable</button>
   <button onclick="showSection('sorting', this)" style="display:none">Sort</button>
-  <button onclick="showSection('sortedlist', this)" id="sorted-list-tab">Sorted List</button>
+  <button onclick="showFLList(this)" id="fl-list-tab">FL</button>
+  <button onclick="showNonFLList(this)" id="non-fl-list-tab">Non-FL</button>
   <button onclick="showSection('conversations', this)" id="conversations-tab">Convos</button>
   <button onclick="showSection('procedures', this)" id="procedures-tab">Procedures</button>
   <button onclick="showSection('ideas', this)" id="ideas-tab">Ideas</button>
@@ -3581,6 +3582,20 @@
     if (arrow) arrow.style.display = id === 'routines' ? '' : 'none';
   }
   window.showSection = showSection;
+
+  // ── Split Sorted List into FL / Non-FL top-nav tabs ──
+  // Each helper switches to the Sorted List section AND sets the
+  // appropriate filter, so the tab itself is the source of truth.
+  function showFLList(btn) {
+    showSection('sortedlist', btn);
+    if (typeof slSetFilter === 'function') slSetFilter('fl');
+  }
+  function showNonFLList(btn) {
+    showSection('sortedlist', btn);
+    if (typeof slSetFilter === 'function') slSetFilter('non-fl');
+  }
+  window.showFLList    = showFLList;
+  window.showNonFLList = showNonFLList;
 
   // ══════════════════════════════════════════════════════════════════
   // ══ SORTING MODULE ══
