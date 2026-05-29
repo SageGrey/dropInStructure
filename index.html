@@ -4676,9 +4676,19 @@
     },
     project: {
       field: 'projectId',
-      buckets: null, // built dynamically from active FL projects
-      subField: 'timing',
-      subLabel: (item) => item.timing || null,
+      buckets: null, // built dynamically from active FL projects' csvCategories
+      bucketByCategory: true,
+      subField: 'projectId',
+      subLabel: (item) => {
+        if (!item.projectId || typeof getProject !== 'function') return null;
+        const p = getProject(item.projectId);
+        return p ? p.name : null;
+      },
+      subGroupLabel: (subVal) => {
+        if (!subVal || typeof getProject !== 'function') return subVal;
+        const p = getProject(subVal);
+        return p ? p.name : subVal;
+      },
     },
     age: {
       field: '_age',
@@ -4785,18 +4795,17 @@
     // Get buckets — for category/project view build dynamically
     let buckets = view.buckets;
     if (!buckets) {
-      if (view.field === 'projectId') {
-        // Build from active FL projects (Project view)
+      if (view.bucketByCategory) {
+        // Project view: one tile per CSV Category that has at least one
+        // active project. Items are grouped within tiles by projectId.
         const flProjects = (typeof getActiveFLProjects === 'function') ? getActiveFLProjects() : [];
-        buckets = flProjects.map(p => ({
-          key: p.id,
-          label: p.name,
-          accent: '#5b8bd4',
-          meta: p.isFL ? 'fl' : undefined,
-          isProject: true,
-          csvCategory: p.csvCategory,
-          csvLineItem: p.csvLineItem,
-        }));
+        const inUse = new Set();
+        flProjects.forEach(p => { if (p.csvCategory) inUse.add(p.csvCategory); });
+        const csvOrder = (typeof FL_BILLING_DATA !== 'undefined') ? FL_BILLING_DATA.map(c => c.category) : [];
+        const ordered = csvOrder.filter(c => inUse.has(c));
+        // Include any categories used by projects but not in CSV (defensive)
+        inUse.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
+        buckets = ordered.map(c => ({ key: c, label: c, accent: '#5b8bd4' }));
       } else {
         // Build live from SORT_ROUNDS so editor changes (add/delete/rename) propagate
         const allSubcats = SORT_ROUNDS
@@ -4865,9 +4874,19 @@
 
     // Always render all buckets (even empty) + unsorted tile
     buckets.forEach(bucket => {
-      let items = bucketOf
-        ? sortedItems.filter(it => bucketOf(it) === bucket.key)
-        : sortedItems.filter(it => it[view.field] === bucket.key);
+      let items;
+      if (view.bucketByCategory) {
+        // Match items by their project's csvCategory
+        items = sortedItems.filter(it => {
+          if (!it.projectId || typeof getProject !== 'function') return false;
+          const p = getProject(it.projectId);
+          return p && p.csvCategory === bucket.key;
+        });
+      } else if (bucketOf) {
+        items = sortedItems.filter(it => bucketOf(it) === bucket.key);
+      } else {
+        items = sortedItems.filter(it => it[view.field] === bucket.key);
+      }
       if (view.sortBy) items = items.slice().sort(view.sortBy);
       el.appendChild(buildBucketCard(bucket, items, view));
     });
@@ -4906,6 +4925,15 @@
     sortAllItems = loadSortItems();
     const item = sortAllItems.find(it => it.id == itemId);
     if (!item) return;
+    // Guard: in project view, bucket drops pass a csvCategory string to
+    // field='projectId'. That's not a real project id — open the picker
+    // filtered to that category so the user explicitly assigns.
+    if (field === 'projectId' && value && typeof getProject === 'function' && !getProject(value)) {
+      if (typeof showProjectPicker === 'function') {
+        showProjectPicker(itemId, { restrictToCategory: value });
+      }
+      return;
+    }
     item[field] = value;
     // Auto-assign FL meta when moved to an FL subcategory (legacy)
     if (field === 'subcategory' && value && FL_SUBCAT_KEYS.has(value)) {
@@ -5327,7 +5355,9 @@
       if (groupLabel) {
         const gh = document.createElement('div');
         gh.className = 'sl-subgroup-header';
-        gh.textContent = groupLabel.replace(/-/g,' ');
+        // Let view override how subgroup raw value (e.g. projectId) maps to a label
+        const subLabelFn = view.subGroupLabel || (s => String(s).replace(/-/g,' '));
+        gh.textContent = subLabelFn(groupLabel);
         gh.dataset.subVal = groupSubVal || '';
 
         // Subgroup drop target: dragging here updates the subField
@@ -5346,11 +5376,21 @@
           const item = sortAllItems.find(it => it.id == _dragItemId);
           if (item) {
             item[subField] = groupSubVal;
-            // Also stamp primary field if moving to a known bucket
-            if (bucket.key !== '__unsorted') item[view.field] = bucket.key;
+            // Also stamp primary field if moving to a known bucket — but skip
+            // when subField === view.field (would clobber the value we just set)
+            // or in project view where bucket.key is a csvCategory string, not
+            // a real projectId.
+            if (bucket.key !== '__unsorted' && view.field !== subField && !view.bucketByCategory) {
+              item[view.field] = bucket.key;
+            }
             // Auto-assign FL meta if dropped onto an FL subgroup
             if (subField === 'subcategory' && FL_SUBCAT_KEYS.has(groupSubVal)) {
               item.meta = 'fl';
+            }
+            // Auto-assign FL meta if dropped onto a project subgroup of an FL project
+            if (subField === 'projectId' && groupSubVal && typeof getProject === 'function') {
+              const p = getProject(groupSubVal);
+              if (p && p.isFL) item.meta = 'fl';
             }
             saveSortItems(sortAllItems);
           }
@@ -5443,13 +5483,10 @@
       // Inherit the active filter so new items show up in the view where they were added
       if (slFilter === 'fl' && !newItem.meta) newItem.meta = 'fl';
       if (slStarredOnly) newItem.starred = true;
-      // Project view: dropping into a project tile auto-assigns projectId + FL meta
-      if (view.field === 'projectId' && bucket.key !== '__unsorted') {
-        newItem.projectId = bucket.key;
-        if (typeof getProject === 'function') {
-          const proj = getProject(bucket.key);
-          if (proj && proj.isFL) newItem.meta = 'fl';
-        }
+      // Project view tile is a CSV Category, not a project — the user picks
+      // a specific project via the prompt below. Always FL in this view.
+      if (view.bucketByCategory) {
+        newItem.meta = 'fl';
       }
       sortAllItems = loadSortItems();
       sortAllItems.push(newItem);
@@ -5457,9 +5494,11 @@
       inp.value = ''; flChk.checked = false;
       inputRow.style.display = 'none'; addBtn.style.display = '';
       renderSortedList();
-      // Prompt for project if the new item is FL but has no project yet
+      // Prompt for project if the new item is FL but has no project yet.
+      // If we're in project view, restrict the picker to the category we're in.
       if (newItem.meta === 'fl' && !newItem.projectId && typeof maybePromptForProject === 'function') {
-        setTimeout(() => maybePromptForProject(newItem.id), 60);
+        const opts = view.bucketByCategory && bucket.key !== '__unsorted' ? { restrictToCategory: bucket.key } : undefined;
+        setTimeout(() => maybePromptForProject(newItem.id, opts), 60);
       }
     };
     saveBtn.onclick = doAdd;
@@ -5839,13 +5878,11 @@
     const projSel = document.createElement('select');
     projSel.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:14px;padding:8px 10px;outline:none;box-sizing:border-box;cursor:pointer;";
     function refreshProjOptions() {
-      const flProjects = (typeof getActiveFLProjects === 'function') ? getActiveFLProjects() : [];
       const curr = (typeof loadSortItems === 'function') ? loadSortItems().find(x => x.id == itemId) : item;
       const currId = curr ? curr.projectId : '';
-      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      projSel.innerHTML = '<option value="">— No project —</option>' +
-        flProjects.map(p => `<option value="${p.id}"${currId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('') +
-        '<option value="__new__">+ New Project…</option>';
+      projSel.innerHTML = (typeof buildProjectOptionsHtml === 'function')
+        ? buildProjectOptionsHtml(currId, { placeholder: '— No project —' })
+        : '<option value="">— No project —</option>';
     }
     refreshProjOptions();
     projSel.addEventListener('change', () => {
@@ -13740,6 +13777,51 @@ function getProject(id) {
 function getActiveFLProjects() {
   return loadProjects().filter(p => p.isFL && !p.completed);
 }
+
+// Build a <select> options string for FL projects, grouped by CSV Category
+// via <optgroup>. Used by tag editor, log-hours modal, project picker.
+function buildProjectOptionsHtml(currentId, opts) {
+  opts = opts || {};
+  const placeholder = opts.placeholder != null ? opts.placeholder : '— Pick a project —';
+  const includeNewProject = opts.includeNewProject !== false;
+  const restrictToCategory = opts.restrictToCategory || null;
+  let projects = getActiveFLProjects();
+  if (restrictToCategory) projects = projects.filter(p => p.csvCategory === restrictToCategory);
+  // Always include the currently-assigned project even if it's completed/archived
+  if (currentId && !projects.find(p => p.id === currentId)) {
+    const cur = getProject(currentId);
+    if (cur) projects.push(cur);
+  }
+  // Group by csvCategory
+  const grouped = {};
+  projects.forEach(p => {
+    const cat = p.csvCategory || '(No category)';
+    (grouped[cat] = grouped[cat] || []).push(p);
+  });
+  // Order categories: CSV order first, then anything else alphabetical
+  const csvOrder = FL_BILLING_DATA.map(c => c.category);
+  const orderedKeys = [];
+  csvOrder.forEach(c => { if (grouped[c]) orderedKeys.push(c); });
+  Object.keys(grouped).sort().forEach(c => { if (!orderedKeys.includes(c)) orderedKeys.push(c); });
+
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  let html = `<option value="">${esc(placeholder)}</option>`;
+  orderedKeys.forEach(cat => {
+    if (!grouped[cat] || grouped[cat].length === 0) return;
+    html += `<optgroup label="${esc(cat)}">`;
+    grouped[cat]
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .forEach(p => {
+        const sel = p.id === currentId ? ' selected' : '';
+        html += `<option value="${p.id}"${sel}>${esc(p.name)}</option>`;
+      });
+    html += '</optgroup>';
+  });
+  if (includeNewProject) html += '<option value="__new__">+ New Project…</option>';
+  return html;
+}
+window.buildProjectOptionsHtml = buildProjectOptionsHtml;
 function createProject(data) {
   const projects = loadProjects();
   const id = 'proj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
@@ -13800,7 +13882,7 @@ window.downloadProjectsCSV = downloadProjectsCSV;
 //   showNewProjectModal({ isFL: true, onSave: (project) => {...} })
 // ══════════════════════════════════════════
 function showNewProjectModal(opts) {
-  opts = Object.assign({ isFL: true, onSave: null, onCancel: null }, opts || {});
+  opts = Object.assign({ isFL: true, onSave: null, onCancel: null, prefillCategory: null }, opts || {});
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -13931,6 +14013,11 @@ function showNewProjectModal(opts) {
   overlay.appendChild(box);
   overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); if (opts.onCancel) opts.onCancel(); } });
   document.body.appendChild(overlay);
+  // Apply prefill (e.g., when picker prompts "New Project" from within a category tile)
+  if (opts.prefillCategory) {
+    catSel.value = opts.prefillCategory;
+    catSel.dispatchEvent(new Event('change'));
+  }
   setTimeout(() => nameInp.focus(), 50);
 }
 window.showNewProjectModal = showNewProjectModal;
@@ -14281,7 +14368,7 @@ function showProjectPicker(itemId, opts) {
   const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
   const it = items.find(i => i.id == itemId);
   if (!it) return;
-  const activeFL = getActiveFLProjects();
+  const restrictToCategory = opts.restrictToCategory || null;
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -14291,7 +14378,7 @@ function showProjectPicker(itemId, opts) {
 
   const hdr = document.createElement('div');
   hdr.style.cssText = "background:#F7B338;padding:12px 16px;font-family:'Archivo Black',sans-serif;font-size:13px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;";
-  hdr.innerHTML = '<span>Assign to FL project</span>';
+  hdr.innerHTML = '<span>Assign to FL project' + (restrictToCategory ? ' · ' + restrictToCategory : '') + '</span>';
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '×';
   closeBtn.style.cssText = 'background:none;border:none;color:#E94D32;font-size:22px;cursor:pointer;padding:0;line-height:1;';
@@ -14310,9 +14397,7 @@ function showProjectPicker(itemId, opts) {
 
   const select = document.createElement('select');
   select.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;outline:none;";
-  select.innerHTML = '<option value="">— Pick a project —</option>' +
-    activeFL.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ${escapeHtml(p.csvCategory)}${p.csvLineItem ? ' › ' + escapeHtml(p.csvLineItem) : ''}</option>`).join('') +
-    '<option value="__new__">+ New Project…</option>';
+  select.innerHTML = buildProjectOptionsHtml(null, { restrictToCategory });
   body.appendChild(select);
 
   const actions = document.createElement('div');
@@ -14327,11 +14412,15 @@ function showProjectPicker(itemId, opts) {
   saveBtn.onclick = () => {
     const val = select.value;
     if (val === '__new__') {
-      showNewProjectModal({ isFL: true, onSave: (proj) => {
-        assignProjectToItem(itemId, proj.id);
-        overlay.remove();
-        if (opts.onAssign) opts.onAssign(proj.id);
-      }});
+      showNewProjectModal({
+        isFL: true,
+        prefillCategory: restrictToCategory,
+        onSave: (proj) => {
+          assignProjectToItem(itemId, proj.id);
+          overlay.remove();
+          if (opts.onAssign) opts.onAssign(proj.id);
+        },
+      });
     } else if (val) {
       assignProjectToItem(itemId, val);
       overlay.remove();
@@ -14362,13 +14451,13 @@ function assignProjectToItem(itemId, projectId) {
 }
 window.assignProjectToItem = assignProjectToItem;
 
-function maybePromptForProject(itemId) {
+function maybePromptForProject(itemId, opts) {
   const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
   const it = items.find(i => i.id == itemId);
   if (!it) return;
   if (it.meta !== 'fl') return;
   if (it.projectId) return;
-  showProjectPicker(itemId);
+  showProjectPicker(itemId, opts);
 }
 window.maybePromptForProject = maybePromptForProject;
 
@@ -14440,12 +14529,10 @@ function showLogHoursModal() {
   const projSel = document.createElement('select');
   projSel.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:13px;padding:7px 9px;outline:none;cursor:pointer;";
   function refreshProjOptions() {
-    const flProjects = getActiveFLProjects();
-    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const currentVal = projSel.value;
-    projSel.innerHTML = '<option value="">— Pick project —</option>' +
-      flProjects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('') +
-      '<option value="__new__">+ New Project…</option>';
+    projSel.innerHTML = (typeof buildProjectOptionsHtml === 'function')
+      ? buildProjectOptionsHtml(currentVal && currentVal !== '__new__' ? currentVal : null, { placeholder: '— Pick project —' })
+      : '<option value="">— Pick project —</option>';
     if (currentVal && currentVal !== '__new__') projSel.value = currentVal;
   }
   refreshProjOptions();
@@ -14595,12 +14682,9 @@ function showLogHoursModal() {
           // Project dropdown
           const projSelEdit = document.createElement('select');
           projSelEdit.style.cssText = "width:100%;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;cursor:pointer;";
-          const flProjects = getActiveFLProjects();
-          // Make sure the currently-assigned project is in the list even if completed.
-          const currentProj = it.projectId ? getProject(it.projectId) : null;
-          if (currentProj && !flProjects.find(p => p.id === currentProj.id)) flProjects.push(currentProj);
-          projSelEdit.innerHTML = '<option value="">— No project —</option>' +
-            flProjects.map(p => `<option value="${p.id}"${it.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+          projSelEdit.innerHTML = (typeof buildProjectOptionsHtml === 'function')
+            ? buildProjectOptionsHtml(it.projectId, { placeholder: '— No project —', includeNewProject: false })
+            : '<option value="">— No project —</option>';
 
           // Task text
           const txtInp = document.createElement('input');
