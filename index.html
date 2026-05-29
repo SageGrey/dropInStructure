@@ -3389,12 +3389,13 @@
     <!-- Sub-tabs -->
     <div class="ed-tabs">
       <button class="ed-tab active" onclick="edShowPane('routines', this)">Routines</button>
-      <button class="ed-tab" onclick="edShowPane('logs', this)">Logs</button>
-      <button class="ed-tab" onclick="edShowPane('categories', this)">Categories</button>
-      <button class="ed-tab" onclick="edShowPane('ideas-cats', this)">Ideas Categories</button>
-      <button class="ed-tab" onclick="edShowPane('people', this)">People</button>
+      <button class="ed-tab" onclick="edShowPane('projects', this)">Projects</button>
+      <button class="ed-tab" onclick="edShowPane('categories', this)">Non-FL Categories</button>
       <button class="ed-tab" onclick="edShowPane('procedures', this)">Procedures</button>
-      <button class="ed-tab" onclick="edShowPane('migration', this)">FL Migration</button>
+      <button class="ed-tab" onclick="edShowPane('people', this)">People</button>
+      <button class="ed-tab" onclick="edShowPane('ideas-cats', this)">Ideas Categories</button>
+      <button class="ed-tab" onclick="edShowPane('logs', this)">Logs</button>
+      <button class="ed-tab" onclick="edShowPane('migration', this)">Migration</button>
     </div>
 
     <!-- ROUTINES PANE -->
@@ -3455,6 +3456,10 @@
 
     <div id="ed-pane-migration" class="ed-pane">
       <div id="ed-migration-content"></div>
+    </div>
+
+    <div id="ed-pane-projects" class="ed-pane">
+      <div id="ed-projects-content"></div>
     </div>
   </div>
 
@@ -12028,6 +12033,7 @@ function edShowPane(name, btn) {
   if (name === 'people') edRenderPeople();
   if (name === 'procedures') edRenderProcedures();
   if (name === 'migration') edRenderMigration();
+  if (name === 'projects') edRenderProjects();
 }
 
 // ── Drag-to-reorder state ──
@@ -12462,6 +12468,8 @@ function edRenderCategories() {
   wrap.innerHTML = workNameHtml + cats.map((round, ri) => {
     // Skip rounds with no buckets (e.g. completion round)
     if (!round.buckets || round.buckets.length === 0) return '';
+    // FL is now project-based — hide the legacy FL Project round from this pane.
+    if (round.id === 'fl-sub') return '';
     return `
     <div class="ed-cat-round" id="ed-cat-round-${ri}">
       <div class="ed-cat-round-header" onclick="edToggleCatRound(${ri}, this)">
@@ -14093,6 +14101,174 @@ function escapeHtml(s) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// ══════════════════════════════════════════
+// ── PROJECTS PANE (Edit tab) ──
+// Full CRUD for FL projects: rename, complete/reactivate, delete.
+// Includes inline + New Project, Export CSV, and a collapsible
+// FL Billing Reference (read-only view of FL_BILLING_DATA).
+// ══════════════════════════════════════════
+function edRenderProjects() {
+  const wrap = document.getElementById('ed-projects-content');
+  if (!wrap) return;
+
+  const projects = loadProjects();
+  const active    = projects.filter(p => p.isFL && !p.completed).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const completed = projects.filter(p => p.isFL &&  p.completed).sort((a,b) => (b.completedAt||'').localeCompare(a.completedAt||''));
+  const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+  const showCompleted = wrap.dataset.showCompleted === '1';
+
+  const itemCount          = id => items.filter(it => it.projectId === id).length;
+  const completedItemCount = id => items.filter(it => it.projectId === id && it.listCompleted).length;
+
+  function projRow(p, isCompleted) {
+    const count = itemCount(p.id);
+    const compCount = completedItemCount(p.id);
+    return `
+      <div style="background:#FFFEE7;border:1.5px solid rgba(48,28,29,0.18);padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;${isCompleted ? 'opacity:0.65;' : ''}">
+        <div style="flex:1;min-width:240px;">
+          <input type="text" value="${escapeHtml(p.name)}"
+            onchange="edRenameProject('${p.id}', this.value)"
+            style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;letter-spacing:0.04em;border:none;background:transparent;width:100%;outline:none;padding:2px 4px;border-radius:2px;"
+            onfocus="this.style.background='rgba(48,28,29,0.05)';"
+            onblur="this.style.background='transparent';">
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.6);margin-top:3px;padding-left:4px;">${escapeHtml(p.csvCategory || '')}${p.csvLineItem ? ' › ' + escapeHtml(p.csvLineItem) : ''}</div>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.45);margin-top:2px;letter-spacing:0.04em;padding-left:4px;">${count} item${count === 1 ? '' : 's'}${count > 0 ? ` · ${compCount} completed` : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${isCompleted
+            ? `<button onclick="edReactivateProject('${p.id}')" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">↺ Reactivate</button>`
+            : `<button onclick="edCompleteProject('${p.id}')" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">✓ Complete</button>`}
+          <button onclick="edDeleteProject('${p.id}')" style="background:none;border:1.5px solid rgba(233,77,50,0.4);color:#E94D32;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">× Delete</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // FL Billing Reference (collapsible)
+  const refHtml = `
+    <details style="margin-top:24px;background:#FFFEE7;border:1.5px solid rgba(48,28,29,0.18);">
+      <summary style="padding:10px 14px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.08em;text-transform:uppercase;background:rgba(91,139,212,0.10);user-select:none;">▸ FL Billing Reference</summary>
+      <div style="padding:14px;font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;">
+        <div style="color:rgba(48,28,29,0.55);margin-bottom:10px;line-height:1.5;">Read-only — source of truth for FL Categories + Line Items + Descriptions. Use this when explaining to a collaborator how to bill on a project.</div>
+        ${FL_BILLING_DATA.map(cat => `
+          <div style="margin-top:14px;border-top:1px solid rgba(48,28,29,0.12);padding-top:8px;">
+            <div style="font-family:'Archivo Black',sans-serif;font-size:12px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;">${escapeHtml(cat.category)}</div>
+            ${cat.lineItems.length === 0
+              ? '<div style="color:rgba(48,28,29,0.4);font-style:italic;font-size:10px;">(no line items)</div>'
+              : cat.lineItems.map(li => `
+                <div style="padding:6px 0;border-bottom:1px dotted rgba(48,28,29,0.08);">
+                  <div style="font-weight:bold;color:#301C1D;">${escapeHtml(li.name)}</div>
+                  ${li.description ? `<div style="color:rgba(48,28,29,0.6);font-size:10px;margin-top:3px;line-height:1.45;">${escapeHtml(li.description)}</div>` : ''}
+                </div>
+              `).join('')}
+          </div>
+        `).join('')}
+      </div>
+    </details>
+  `;
+
+  wrap.innerHTML = `
+    <div style="background:#FFFEE7;border:2px solid #301C1D;padding:14px 16px;margin-bottom:14px;">
+      <div style="font-family:'Archivo Black',sans-serif;font-size:14px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;">FL Projects</div>
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.6);line-height:1.55;">
+        Each FL task is assigned to a Project. Each Project maps to an FL Category + Line Item (from the CSV) — that's what appears on the invoice.
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button id="ed-proj-new" style="background:#E94D32;border:1.5px solid #E94D32;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;">+ New Project</button>
+        <button id="ed-proj-export" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;">↓ Export CSV</button>
+        <button id="ed-proj-toggle-comp" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;margin-left:auto;">${showCompleted ? '◐ Hide completed' : '○ Show completed (' + completed.length + ')'}</button>
+      </div>
+    </div>
+
+    <div style="font-family:'Archivo Black',sans-serif;font-size:12px;color:#F7B338;letter-spacing:0.1em;text-transform:uppercase;padding:6px 0 10px;">Active <span style="opacity:0.5;font-family:'Space Mono',monospace;font-weight:normal;letter-spacing:0.04em;">(${active.length})</span></div>
+    ${active.length === 0
+      ? `<div style="font-family:'Space Mono',monospace;font-size:12px;color:rgba(255,254,231,0.4);padding:14px 4px;">No active projects yet. Hit + New Project to create one.</div>`
+      : active.map(p => projRow(p, false)).join('')}
+
+    ${showCompleted ? `
+      <div style="font-family:'Archivo Black',sans-serif;font-size:12px;color:rgba(255,254,231,0.5);letter-spacing:0.1em;text-transform:uppercase;padding:18px 0 10px;">Completed <span style="opacity:0.5;font-family:'Space Mono',monospace;font-weight:normal;letter-spacing:0.04em;">(${completed.length})</span></div>
+      ${completed.length === 0
+        ? `<div style="font-family:'Space Mono',monospace;font-size:12px;color:rgba(255,254,231,0.4);padding:14px 4px;">No completed projects.</div>`
+        : completed.map(p => projRow(p, true)).join('')}
+    ` : ''}
+
+    ${refHtml}
+  `;
+
+  // Wire up header buttons
+  document.getElementById('ed-proj-new').onclick = () => {
+    showNewProjectModal({ isFL: true, onSave: () => edRenderProjects() });
+  };
+  document.getElementById('ed-proj-export').onclick = () => downloadProjectsCSV();
+  document.getElementById('ed-proj-toggle-comp').onclick = () => {
+    wrap.dataset.showCompleted = showCompleted ? '' : '1';
+    edRenderProjects();
+  };
+}
+window.edRenderProjects = edRenderProjects;
+
+function edRenameProject(id, newName) {
+  newName = (newName || '').trim();
+  if (!newName) return;
+  const projects = loadProjects();
+  const p = projects.find(p => p.id === id);
+  if (!p) return;
+  p.name = newName;
+  saveProjects(projects);
+  if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+}
+window.edRenameProject = edRenameProject;
+
+function edCompleteProject(id) {
+  const p = getProject(id);
+  if (!p) return;
+  if (!confirm(`Mark "${p.name}" as completed?\n\nIt won't appear in future project dropdowns, but existing items keep their assignment.`)) return;
+  completeProjectById(id);
+  edRenderProjects();
+  if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+}
+window.edCompleteProject = edCompleteProject;
+
+function edReactivateProject(id) {
+  const projects = loadProjects();
+  const p = projects.find(p => p.id === id);
+  if (!p) return;
+  p.completed = false;
+  p.completedAt = null;
+  saveProjects(projects);
+  edRenderProjects();
+  if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+}
+window.edReactivateProject = edReactivateProject;
+
+function edDeleteProject(id) {
+  const p = getProject(id);
+  if (!p) return;
+  const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+  const count = items.filter(it => it.projectId === id).length;
+  let warning = `Delete project "${p.name}"?`;
+  if (count > 0) warning += `\n\n${count} item${count === 1 ? '' : 's'} currently use this project — their project assignment will be cleared (item itself stays). The old id is preserved as legacyProjectId in case you need it.`;
+  if (!confirm(warning)) return;
+  if (count > 0 && typeof saveSortItems === 'function') {
+    items.forEach(it => {
+      if (it.projectId === id) {
+        it.legacyProjectId = id;
+        delete it.projectId;
+      }
+    });
+    saveSortItems(items);
+  }
+  const projects = loadProjects();
+  const idx = projects.findIndex(p => p.id === id);
+  if (idx >= 0) {
+    projects.splice(idx, 1);
+    saveProjects(projects);
+  }
+  edRenderProjects();
+  if (typeof renderSortedList === 'function') try { renderSortedList(); } catch(e) {}
+}
+window.edDeleteProject = edDeleteProject;
 
 // ══════════════════════════════════════════
 // ── PROJECT PICKER ──
