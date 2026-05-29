@@ -3298,6 +3298,89 @@
 
   <!-- ══ IDEAS ADOPTION CENTER ══ -->
   <div id="ideas" class="section">
+    <style>
+      .ideas-section-block { margin-bottom: 14px; }
+      .ideas-section-header {
+        background: #F7B338;
+        padding: 10px 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .ideas-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 0;
+        background: transparent;
+      }
+      .ideas-tile {
+        background: #FFFEE7;
+        width: 150px;
+        min-height: 130px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        cursor: default;
+        border: 2px solid transparent;
+        transition: border-color 0.12s, background 0.12s;
+        flex-shrink: 0;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .ideas-tile:hover { border-color: #E94D32; background: #f5f0d8; }
+      .ideas-tile-cat {
+        font-family: 'Space Mono', monospace;
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(48, 28, 29, 0.45);
+        margin-bottom: 6px;
+      }
+      .ideas-tile-text {
+        font-family: 'Space Mono', monospace;
+        font-size: 13px;
+        color: #301C1D;
+        line-height: 1.4;
+        flex: 1;
+        word-break: break-word;
+      }
+      .ideas-tile-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+        border-top: 1px solid rgba(48, 28, 29, 0.08);
+        padding-top: 6px;
+      }
+      .ideas-tile-adopt {
+        background: none;
+        border: 1px solid #7FA497;
+        color: #7FA497;
+        font-family: 'Space Mono', monospace;
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .ideas-tile-adopt:hover { background: #7FA497; color: #FFFEE7; }
+      .ideas-tile-del {
+        background: none;
+        border: none;
+        color: rgba(233, 77, 50, 0.55);
+        font-size: 14px;
+        cursor: pointer;
+        padding: 2px 4px;
+        line-height: 1;
+        transition: color 0.12s;
+      }
+      .ideas-tile-del:hover { color: #E94D32; }
+      @media (max-width: 700px) {
+        .ideas-tile { width: calc(50% - 4px); }
+      }
+    </style>
     <div style="padding:16px;">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
         <h2 style="font-family:'Archivo Black',sans-serif;font-size:18px;color:#F7B338;letter-spacing:0.08em;text-transform:uppercase;margin:0;">Ideas Adoption Center</h2>
@@ -4776,6 +4859,43 @@
   }
   window.slToggleStarred = slToggleStarred;
 
+  // ── Persisted bucket-tile order per Sorted List view ──
+  // Stored as { viewKey: [bucketKey, bucketKey, ...] }. On render, buckets
+  // are reordered to match the saved list; any new ones not in the saved
+  // order are appended to the end.
+  const SL_BUCKET_ORDER_KEY = 'sl_bucket_order_v1';
+  function slLoadBucketOrder() {
+    try { return JSON.parse(localStorage.getItem(SL_BUCKET_ORDER_KEY) || '{}') || {}; }
+    catch { return {}; }
+  }
+  function slSaveBucketOrder(orders) {
+    try { localStorage.setItem(SL_BUCKET_ORDER_KEY, JSON.stringify(orders)); } catch {}
+    if (typeof gistMarkDirty === 'function') gistMarkDirty();
+  }
+  function slApplyBucketOrder(buckets, savedKeys) {
+    if (!savedKeys || !savedKeys.length) return buckets;
+    const map = new Map(buckets.map(b => [b.key, b]));
+    const result = [];
+    savedKeys.forEach(k => {
+      if (map.has(k)) { result.push(map.get(k)); map.delete(k); }
+    });
+    map.forEach(b => result.push(b));
+    return result;
+  }
+  let _dragBucketKey = null;
+  let _slCurrentBucketKeys = [];
+  function slReorderBucket(srcKey, dstKey) {
+    if (!srcKey || srcKey === dstKey) return;
+    const order = _slCurrentBucketKeys.filter(k => k !== srcKey && k !== '__unsorted');
+    const dstIdx = order.indexOf(dstKey);
+    if (dstIdx < 0) order.push(srcKey);
+    else order.splice(dstIdx, 0, srcKey);
+    const all = slLoadBucketOrder();
+    all[slView] = order;
+    slSaveBucketOrder(all);
+    renderSortedList();
+  }
+
   /**
    * Renders the entire Sorted List tab. Loads items from storage,
    * applies active filters (FL/non-FL/starred), determines the
@@ -4848,6 +4968,15 @@
         }
       }
     }
+
+    // Apply user-customized bucket order (per view), if any. Drag-handles
+    // on the bucket headers persist this via slReorderBucket().
+    const _slSavedOrders = slLoadBucketOrder();
+    const _slSavedForView = _slSavedOrders[slView];
+    if (_slSavedForView && _slSavedForView.length) {
+      buckets = slApplyBucketOrder(buckets, _slSavedForView);
+    }
+    _slCurrentBucketKeys = buckets.map(b => b.key);
 
     // Exclude completed items from the bucket tiles — they live in the Completed tile only.
     const activeItems   = allItems.filter(it => !it.listCompleted);
@@ -5308,26 +5437,61 @@
     card.className = 'sl-bucket-card';
     card.dataset.bucketKey = bucket.key;
 
-    // ── Tile-level drag-drop: accept items dropped onto this tile
+    // ── Tile-level drag-drop: accept items dropped onto this tile,
+    // OR another bucket tile being reordered onto this one.
     card.addEventListener('dragover', e => {
-      if (_dragItemId == null) return;
-      e.preventDefault();
-      card.style.outline = '2px solid #E94D32';
+      if (_dragItemId != null) {
+        e.preventDefault();
+        card.style.outline = '2px solid #E94D32';
+      } else if (_dragBucketKey != null && _dragBucketKey !== bucket.key && bucket.key !== '__unsorted') {
+        e.preventDefault();
+        card.style.outline = '2px dashed #F7B338';
+      }
     });
     card.addEventListener('dragleave', () => { card.style.outline = ''; });
     card.addEventListener('drop', e => {
       e.preventDefault();
       card.style.outline = '';
-      if (_dragItemId == null || bucket.key === '__unsorted') return;
-      // Update the view's primary field to this bucket's key
-      slUpdateItemField(_dragItemId, view.field, bucket.key);
-      _dragItemId = null;
+      if (_dragItemId != null && bucket.key !== '__unsorted') {
+        slUpdateItemField(_dragItemId, view.field, bucket.key);
+        _dragItemId = null;
+      } else if (_dragBucketKey != null && _dragBucketKey !== bucket.key && bucket.key !== '__unsorted') {
+        slReorderBucket(_dragBucketKey, bucket.key);
+        _dragBucketKey = null;
+      }
     });
 
     // Header stripe
     const hdr = document.createElement('div');
     hdr.className = 'sl-bucket-header';
-    hdr.innerHTML = `<span class="sl-hdr-text">${bucket.label.toUpperCase()}</span>`;
+    hdr.style.display = 'flex';
+    hdr.style.alignItems = 'center';
+    hdr.style.gap = '8px';
+    // Drag handle for reordering tiles (skip the Unsorted tile)
+    if (bucket.key !== '__unsorted') {
+      const dragHandle = document.createElement('span');
+      dragHandle.textContent = '⠿';
+      dragHandle.title = 'Drag to reorder this tile';
+      dragHandle.draggable = true;
+      dragHandle.style.cssText = "cursor:grab;color:rgba(48,28,29,0.5);user-select:none;font-size:14px;padding:0 2px;line-height:1;";
+      dragHandle.addEventListener('dragstart', e => {
+        e.stopPropagation();
+        _dragBucketKey = bucket.key;
+        _dragItemId = null; // make sure we're not also in item-drag mode
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', bucket.key); } catch {}
+        card.style.opacity = '0.5';
+      });
+      dragHandle.addEventListener('dragend', () => {
+        _dragBucketKey = null;
+        card.style.opacity = '';
+      });
+      hdr.appendChild(dragHandle);
+    }
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'sl-hdr-text';
+    labelSpan.textContent = bucket.label.toUpperCase();
+    hdr.appendChild(labelSpan);
     // "Sort this section" button
     if (bucket.key !== '__unsorted') {
       const sortBtn = document.createElement('button');
@@ -12014,48 +12178,52 @@ function renderIdeas() {
     if (unsorted.length > 0) buckets.push({ key: '__unsorted__', label: 'Unsorted', accent: '#999' });
   }
 
+  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function renderTile(item, catLabel) {
+    return `<div class="ideas-tile">
+      <div class="ideas-tile-cat">${esc(catLabel || '')}</div>
+      <div class="ideas-tile-text">${esc(item.text || '')}</div>
+      <div class="ideas-tile-actions">
+        <button class="ideas-tile-adopt" onclick="ideasAdopt('${item.id}')" title="Adopt to Sorted List">Adopt</button>
+        <button class="ideas-tile-del" onclick="ideasDeleteItem('${item.id}')" title="Remove">×</button>
+      </div>
+    </div>`;
+  }
+
   let html = '';
   buckets.forEach(bucket => {
     const bucketItems = bucket.key === '__unsorted__' ?
       items.filter(it => !it[viewDef.field]) :
       items.filter(it => it[viewDef.field] === bucket.key);
 
-    html += `<div style="background:#FFFEE7;border:2px solid #301C1D;margin-bottom:10px;">
-      <div style="background:${bucket.accent || '#F7B338'};padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;text-transform:uppercase;letter-spacing:0.06em;">${bucket.label}</span>
+    html += `<div class="ideas-section-block">
+      <div class="ideas-section-header" style="background:${bucket.accent || '#F7B338'};">
+        <span style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;text-transform:uppercase;letter-spacing:0.06em;">${esc(bucket.label)}</span>
         <span style="font-family:'Space Mono',monospace;font-size:10px;color:#301C1D;opacity:0.6;">${bucketItems.length}</span>
-      </div>
-      <div style="padding:8px 10px;">`;
+      </div>`;
 
     if (bucketItems.length === 0) {
-      html += '<div style="font-family:\'Space Mono\',monospace;font-size:11px;color:rgba(48,28,29,0.3);padding:6px 0;font-style:italic;">No ideas here yet</div>';
+      html += '<div style="font-family:\'Space Mono\',monospace;font-size:11px;color:rgba(255,254,231,0.3);padding:10px 4px;font-style:italic;">No ideas here yet</div>';
     } else {
-      bucketItems.forEach(item => {
-        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(48,28,29,0.08);">
-          <span style="flex:1;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;">${item.text.replace(/</g,'&lt;')}</span>
-          <button onclick="ideasAdopt('${item.id}')" title="Adopt to Sorted List" style="background:none;border:1px solid #7FA497;color:#7FA497;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.08em;text-transform:uppercase;padding:4px 8px;cursor:pointer;white-space:nowrap;">Adopt</button>
-          <button onclick="ideasDeleteItem('${item.id}')" title="Remove" style="background:none;border:none;color:#E94D32;font-size:16px;cursor:pointer;padding:2px 4px;line-height:1;">×</button>
-        </div>`;
-      });
+      html += '<div class="ideas-grid">';
+      bucketItems.forEach(item => { html += renderTile(item, bucket.label); });
+      html += '</div>';
     }
-    html += '</div></div>';
+    html += '</div>';
   });
 
   // Show unsorted items that don't match any bucket
   if (buckets.every(b => b.key !== '__unsorted__')) {
     const unsorted = items.filter(it => !buckets.some(b => it[viewDef.field] === b.key));
     if (unsorted.length > 0) {
-      html += `<div style="background:#FFFEE7;border:2px solid #301C1D;margin-bottom:10px;">
-        <div style="background:#999;padding:10px 14px;">
+      html += `<div class="ideas-section-block">
+        <div class="ideas-section-header" style="background:#999;">
           <span style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;text-transform:uppercase;letter-spacing:0.06em;">Unsorted</span>
-        </div><div style="padding:8px 10px;">`;
-      unsorted.forEach(item => {
-        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(48,28,29,0.08);">
-          <span style="flex:1;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;">${item.text.replace(/</g,'&lt;')}</span>
-          <button onclick="ideasAdopt('${item.id}')" title="Adopt" style="background:none;border:1px solid #7FA497;color:#7FA497;font-family:'Space Mono',monospace;font-size:9px;padding:4px 8px;cursor:pointer;">Adopt</button>
-          <button onclick="ideasDeleteItem('${item.id}')" style="background:none;border:none;color:#E94D32;font-size:16px;cursor:pointer;padding:2px 4px;">×</button>
-        </div>`;
-      });
+          <span style="font-family:'Space Mono',monospace;font-size:10px;color:#301C1D;opacity:0.6;">${unsorted.length}</span>
+        </div>
+        <div class="ideas-grid">`;
+      unsorted.forEach(item => { html += renderTile(item, 'Unsorted'); });
       html += '</div></div>';
     }
   }
