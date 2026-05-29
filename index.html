@@ -4750,6 +4750,20 @@
       const el = document.getElementById('sl-filter-' + k);
       if (el) el.classList.toggle('sl-filter-active', k === filter);
     });
+    // Hide view buttons that don't make sense for the current filter:
+    //   FL list  → no Category view (FL uses Projects)
+    //   Non-FL   → no Project view  (Projects are FL-only)
+    const projectBtn  = document.getElementById('sl-tab-project');
+    const categoryBtn = document.getElementById('sl-tab-category');
+    if (projectBtn)  projectBtn.style.display  = (filter === 'non-fl') ? 'none' : '';
+    if (categoryBtn) categoryBtn.style.display = (filter === 'fl')     ? 'none' : '';
+    // If the active view is now hidden, fall back to Timing.
+    if ((filter === 'fl' && slView === 'category') || (filter === 'non-fl' && slView === 'project')) {
+      slView = 'timing';
+      document.querySelectorAll('.sl-view-tile').forEach(el => el.classList.remove('sl-active'));
+      const tab = document.getElementById('sl-tab-timing');
+      if (tab) tab.classList.add('sl-active');
+    }
     renderSortedList();
   }
   window.slSetFilter = slSetFilter;
@@ -5474,7 +5488,11 @@
       const isFL = flChk.checked;
       const newItem = { id: Date.now() + Math.random(), text };
       if (bucket.key !== '__unsorted') {
-        if (view.field) newItem[view.field] = bucket.key;
+        // In Project view (bucketByCategory), bucket.key is a CSV category
+        // string, NOT a real projectId — never write it to view.field, or
+        // the item ends up with a garbage projectId and disappears from
+        // every tile. Project assignment happens via the picker below.
+        if (view.field && !view.bucketByCategory) newItem[view.field] = bucket.key;
         if (view.field === 'subcategory' && bucket.meta) newItem.meta = bucket.meta;
         // Auto-assign FL meta if adding to an FL subcategory bucket
         if (view.field === 'subcategory' && FL_SUBCAT_KEYS.has(bucket.key)) newItem.meta = 'fl';
@@ -14766,6 +14784,82 @@ function showLogHoursModal() {
   setTimeout(() => projSel.focus(), 50);
 }
 window.showLogHoursModal = showLogHoursModal;
+
+// ══════════════════════════════════════════
+// ── ONE-TIME CLEANUP: RECLAIM ORPHAN projectId VALUES ──
+// A bug in the Project-view bucket Add flow could write a CSV Category
+// string (e.g. "AQUATIC FRAMEWORK") to `projectId`. Such items had a
+// truthy `projectId` but no matching project, so they vanished from
+// every tile. Reset them to no project, preserving the bad value in
+// `legacyProjectId` for safety. Same treatment for items whose project
+// has been deleted in the meantime.
+// ══════════════════════════════════════════
+(function reclaimOrphanProjectIds() {
+  try {
+    if (localStorage.getItem('orphan_project_ids_reclaimed_v1')) return;
+    const itemsRaw = localStorage.getItem('sortAllItems_v2');
+    if (!itemsRaw) { localStorage.setItem('orphan_project_ids_reclaimed_v1', '1'); return; }
+    const items = JSON.parse(itemsRaw);
+    if (!Array.isArray(items)) { localStorage.setItem('orphan_project_ids_reclaimed_v1', '1'); return; }
+    const projects = (typeof loadProjects === 'function') ? loadProjects() : [];
+    const validIds = new Set(projects.map(p => p.id));
+    let changed = false;
+    items.forEach(it => {
+      if (it && it.projectId && !validIds.has(it.projectId)) {
+        it.legacyProjectId = it.projectId;
+        delete it.projectId;
+        changed = true;
+      }
+    });
+    if (changed) localStorage.setItem('sortAllItems_v2', JSON.stringify(items));
+    localStorage.setItem('orphan_project_ids_reclaimed_v1', '1');
+  } catch(e) { console.error('Orphan projectId reclaim failed', e); }
+})();
+
+// ══════════════════════════════════════════
+// ── ONE-TIME CLEANUP: STRIP VESTIGIAL FL SUBCATEGORY BUCKETS ──
+// FL is fully project-based now. Any remaining buckets in the fl-sub
+// round (custom additions like "All Landscapes", "Ad Hoc Projects",
+// etc.) are vestigial — strip them, and clear `subcategory` from any
+// item that already has a `projectId` (legacy tag stashed for safety).
+// ══════════════════════════════════════════
+(function stripVestigialFLSubcats() {
+  try {
+    if (localStorage.getItem('fl_subcat_vestigial_strip_v1')) return;
+    const CATS_LOCAL = 'custom_sort_rounds_v1';
+
+    const savedRaw = localStorage.getItem(CATS_LOCAL);
+    if (savedRaw) {
+      const saved = JSON.parse(savedRaw);
+      if (Array.isArray(saved)) {
+        const fl = saved.find(r => r && r.id === 'fl-sub');
+        if (fl) { fl.buckets = []; localStorage.setItem(CATS_LOCAL, JSON.stringify(saved)); }
+      }
+    }
+    if (typeof SORT_ROUNDS !== 'undefined') {
+      const fl = SORT_ROUNDS.find(r => r && r.id === 'fl-sub');
+      if (fl) fl.buckets = [];
+    }
+
+    const itemsRaw = localStorage.getItem('sortAllItems_v2');
+    if (itemsRaw) {
+      const items = JSON.parse(itemsRaw);
+      if (Array.isArray(items)) {
+        let changed = false;
+        items.forEach(it => {
+          if (it && it.projectId && it.subcategory) {
+            it.legacySubcategory = it.subcategory;
+            delete it.subcategory;
+            changed = true;
+          }
+        });
+        if (changed) localStorage.setItem('sortAllItems_v2', JSON.stringify(items));
+      }
+    }
+
+    localStorage.setItem('fl_subcat_vestigial_strip_v1', '1');
+  } catch(e) { console.error('FL subcat vestigial strip failed', e); }
+})();
 
 // ══════════════════════════════════════════
 // ── ONE-TIME BACKFILL: NORMALIZE completedOn DATES ──
