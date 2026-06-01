@@ -4731,23 +4731,13 @@
   const SL_VIEWS = {
     timing: {
       field: 'timing',
-      buckets: [
-        { key: 'must',      label: 'Must Today',    accent: '#E94D32' },
-        { key: 'ideally',   label: 'Ideally Today', accent: '#F7B338' },
-        { key: 'this-week', label: 'This Week',     accent: '#5b8bd4' },
-        { key: 'soon',      label: 'Soon',          accent: '#7FA497' },
-        { key: 'whenever',  label: 'Whenever',      accent: '#999' },
-      ],
+      buckets: null, // built dynamically from SORT_ROUNDS at render time
       subField: 'subcategory',
       subLabel: (item) => item.subcategory || (item.meta ? `(${item.meta})` : null),
     },
     length: {
       field: 'length',
-      buckets: [
-        { key: 'smol',  label: 'Smol',        accent: '#7FA497' },
-        { key: 'push',  label: 'Push',         accent: '#F7B338' },
-        { key: 'whole', label: 'Whole Thing',  accent: '#E94D32' },
-      ],
+      buckets: null, // built dynamically from SORT_ROUNDS at render time
       subField: 'timing',
       subLabel: (item) => item.timing || null,
     },
@@ -4940,7 +4930,7 @@
         // Include any categories used by projects but not in CSV (defensive)
         inUse.forEach(c => { if (!ordered.includes(c)) ordered.push(c); });
         buckets = ordered.map(c => ({ key: c, label: c, accent: '#5b8bd4' }));
-      } else {
+      } else if (view.field === 'subcategory') {
         // Build live from SORT_ROUNDS so editor changes (add/delete/rename) propagate
         const allSubcats = SORT_ROUNDS
           .filter(r => r.field === 'subcategory')
@@ -4965,6 +4955,30 @@
           buckets = allSubcats.filter(b => !FL_SUBCAT_KEYS.has(b.key));
         } else {
           buckets = allSubcats;
+        }
+      } else {
+        // Generic dynamic: pull buckets from the SORT_ROUNDS round matching
+        // view.field (timing, length, etc.). Picks up any custom buckets the
+        // user added via the editor (e.g. "Pending X", "Tomorrow").
+        const round = SORT_ROUNDS.find(r => r.field === view.field);
+        if (round && Array.isArray(round.buckets)) {
+          buckets = round.buckets.map(b => ({
+            key: b.key,
+            label: b.label,
+            accent: b.color || '#888',
+            meta: b.meta,
+          }));
+          // Also include any orphan values present on items but absent from the round.
+          const known = new Set(buckets.map(b => b.key));
+          allItems.forEach(it => {
+            const v = it[view.field];
+            if (v && !known.has(v)) {
+              buckets.push({ key: v, label: String(v).replace(/-/g,' '), accent: '#888' });
+              known.add(v);
+            }
+          });
+        } else {
+          buckets = [];
         }
       }
     }
