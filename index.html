@@ -10359,7 +10359,8 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
       else map.set(k, { ...r, _origKey: k });
     });
 
-    // Apply overrides — legacy unified-log rows have no lineItem/projectName
+    // Apply overrides — legacy unified-log rows have no lineItem/projectName by default,
+    // but they can be set via billable_edits overrides (used by the Sort Unassigned modal).
     const edits = loadBillableEdits();
     const result = [];
     map.forEach((row) => {
@@ -10367,11 +10368,13 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
       if (ov && ov._deleted) return; // skip deleted
       result.push({
         ...row,
-        lineItem:    '',
-        projectName: '',
-        date: (ov && ov.date) ? ov.date : row.date,
-        mins: (ov && ov.mins != null) ? ov.mins : row.mins,
-        desc: (ov && ov.desc != null) ? ov.desc : row.desc,
+        lineItem:    (ov && ov.lineItem != null) ? ov.lineItem : '',
+        projectName: (ov && ov.projectName != null) ? ov.projectName : '',
+        date:        (ov && ov.date) ? ov.date : normalizeDateStr(row.date),
+        mins:        (ov && ov.mins != null) ? ov.mins : row.mins,
+        desc:        (ov && ov.desc != null) ? ov.desc : row.desc,
+        project:     (ov && ov.project != null) ? ov.project : row.project,
+        client:      (ov && ov.client != null) ? ov.client : row.client,
       });
     });
 
@@ -10435,7 +10438,9 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     function fmtMonth(m) { const [y,mo] = m.split('-'); return mNames[parseInt(mo)] + ' ' + y; }
 
     const monthRows = rows.filter(r => r.date.slice(0,7) === activeBillableMonth);
-    const unassignedCount = monthRows.filter(r => (r._origKey || '').startsWith('flItem|') && !r.projectName).length;
+    // Any row missing projectName counts as unassigned — FL items without
+    // projectId AND legacy unified-log entries that never had one.
+    const unassignedCount = monthRows.filter(r => !r.projectName).length;
     const sortBtnHtml = unassignedCount > 0
       ? `<button onclick="showBillableFixModal()" style="margin-left:12px;background:#5b8bd4;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;">⚠ Sort ${unassignedCount} unassigned</button>`
       : '';
@@ -10593,7 +10598,7 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     const allRows = collectBillableRows();
     const rows = allRows
       .filter(r => r.date.slice(0,7) === monthKey)
-      .filter(r => (r._origKey || '').startsWith('flItem|') && !r.projectName);
+      .filter(r => !r.projectName);
 
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -10619,8 +10624,26 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;';
     box.appendChild(body);
 
-    function applyAssignment(itemId, projectId, statusEl, rowEl) {
-      if (typeof assignProjectToItem === 'function') assignProjectToItem(itemId, projectId);
+    function applyAssignment(r, projectId, statusEl, rowEl) {
+      const proj = (typeof getProject === 'function') ? getProject(projectId) : null;
+      const origKey = r._origKey || '';
+      if (origKey.startsWith('flItem|')) {
+        // FL item: assign project on the source item; collectBillableRows
+        // will pick up project info on next render.
+        const itemId = origKey.replace(/^flItem\|/, '');
+        if (typeof assignProjectToItem === 'function') assignProjectToItem(itemId, projectId);
+      } else {
+        // Legacy unified-log row: store project info as a billable_edits override.
+        const edits = loadBillableEdits();
+        const cur = edits[origKey] || {};
+        edits[origKey] = {
+          ...cur,
+          project:     proj ? (proj.csvCategory || '') : '',
+          lineItem:    proj ? (proj.csvLineItem || '') : '',
+          projectName: proj ? (proj.name || '') : '',
+        };
+        saveBillableEdits(edits);
+      }
       statusEl.style.color = '#7FA497';
       statusEl.textContent = '✓ Assigned';
       rowEl.style.opacity = '0.55';
@@ -10639,7 +10662,6 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
       body.appendChild(intro);
 
       rows.forEach(r => {
-        const itemId = (r._origKey || '').replace(/^flItem\|/, '');
         const row = document.createElement('div');
         row.style.cssText = "border:1px solid rgba(48,28,29,0.18);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:rgba(91,139,212,0.05);";
 
@@ -10674,13 +10696,13 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
                   sel.innerHTML = (typeof buildProjectOptionsHtml === 'function')
                     ? buildProjectOptionsHtml(proj.id, { placeholder: '— Pick project —' })
                     : '<option value="">— Pick project —</option>';
-                  applyAssignment(itemId, proj.id, status, row);
+                  applyAssignment(r, proj.id, status, row);
                 },
                 onCancel: () => { sel.value = ''; },
               });
             }
           } else if (val) {
-            applyAssignment(itemId, val, status, row);
+            applyAssignment(r, val, status, row);
           }
         });
 
