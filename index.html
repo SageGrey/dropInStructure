@@ -5284,8 +5284,12 @@
     saveSortItems(items);
     sortAllItems = items;
 
-    // Keep the unified billable log in sync for FL items
-    if (item.meta === 'fl' && item.completedOn) {
+    // Keep the unified billable log in sync for FL items.
+    // Skip when the item has a projectId — those are read directly by
+    // collectBillableRows from loadSortItems, so writing to the unified
+    // log would duplicate the row (and toSentenceCase would lowercase
+    // its desc, creating a casing-mismatch dupe).
+    if (item.meta === 'fl' && item.completedOn && !item.projectId) {
       try {
         let dateKey = item.completedOn;
         if (dateKey.includes('/')) {
@@ -15396,6 +15400,101 @@ window.showLogHoursModal = showLogHoursModal;
     if (changed) localStorage.setItem('sortAllItems_v2', JSON.stringify(items));
     localStorage.setItem('completedOn_iso_v1', '1');
   } catch(e) { console.error('completedOn normalize failed', e); }
+})();
+
+// ══════════════════════════════════════════
+// ── ONE-TIME CLEANUP: STRIP SENTENCE-CASED DUPLICATE BILLABLE ENTRIES ──
+// `slAddToBillable` historically wrote the unified-log `desc` via
+// `toSentenceCase(item.text)`, which lowercases everything and then
+// capitalizes only the first letter. The original `item.text` keeps its
+// real casing — so the same task ends up logged twice (one row per
+// source) with descriptions that differ in case, e.g. "Meet with Madeleine"
+// vs "Meet with madeleine". An earlier dedup pass missed these because
+// it only generated raw and first-letter-capitalized keys. This pass
+// adds the sentence-cased and lowercased variants and strips matches
+// from the unified log.
+// ══════════════════════════════════════════
+(function cleanupSentenceCasedBillableDupes() {
+  try {
+    if (localStorage.getItem('billable_dedupe_sentencecase_v1')) return;
+    const itemsRaw = localStorage.getItem('sortAllItems_v2');
+    if (!itemsRaw) { localStorage.setItem('billable_dedupe_sentencecase_v1', '1'); return; }
+    const items = JSON.parse(itemsRaw);
+    if (!Array.isArray(items)) { localStorage.setItem('billable_dedupe_sentencecase_v1', '1'); return; }
+
+    const cleanLower = s => String(s == null ? '' : s).trim().toLowerCase();
+    const sentenceCase = s => {
+      const t = cleanLower(s);
+      return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+    };
+
+    const dupeKeys = new Set();
+    items.forEach(it => {
+      if (!it || !it.projectId) return;
+      if (!it.listCompleted || !it.completedOn) return;
+      if (typeof it.completedMins !== 'number' || it.completedMins <= 0) return;
+      const txt = (it.text || '');
+      const mins = it.completedMins;
+      const d = it.completedOn;
+      [txt, sentenceCase(txt), cleanLower(txt), txt.charAt(0).toUpperCase() + txt.slice(1)].forEach(v => {
+        dupeKeys.add(d + '|' + v + '|' + mins);
+      });
+    });
+
+    const UL_KEY = 'unified_log_v1';
+    const ulRaw = localStorage.getItem(UL_KEY);
+    if (!ulRaw) { localStorage.setItem('billable_dedupe_sentencecase_v1', '1'); return; }
+    const log = JSON.parse(ulRaw);
+    let removed = 0;
+    Object.keys(log).forEach(key => {
+      if (!key.includes('_focus')) return;
+      const date = key.split('_')[0];
+      const entry = log[key];
+      Object.keys(entry).forEach(hk => {
+        if (!hk.startsWith('h')) return;
+        const sec = entry[hk];
+        if (!sec || !Array.isArray(sec.items)) return;
+        const before = sec.items.length;
+        sec.items = sec.items.filter(li => {
+          const k = date + '|' + (li.desc || '') + '|' + (li.mins || 0);
+          return !dupeKeys.has(k);
+        });
+        removed += (before - sec.items.length);
+      });
+    });
+    if (removed > 0) localStorage.setItem(UL_KEY, JSON.stringify(log));
+
+    // Also strip any billable_edits overrides that pointed at the
+    // removed unified-log keys (so we don't keep stale project info).
+    const editsRaw = localStorage.getItem('billable_edits_v1');
+    if (editsRaw) {
+      const edits = JSON.parse(editsRaw);
+      let editsChanged = false;
+      Object.keys(edits).forEach(k => {
+        // Legacy keys look like "YYYY-MM-DD|client|project|desc"
+        if (!k.includes('|') || k.startsWith('flItem|') || k.startsWith('__extras|')) return;
+        const parts = k.split('|');
+        if (parts.length < 4) return;
+        const date = parts[0];
+        const desc = parts.slice(3).join('|');
+        // Match same logic as above — find a corresponding mins value is hard
+        // without iterating; skip if nothing matches plausibly.
+        // We use a simpler heuristic: drop the override if its desc matches any
+        // item's text/sentence-case variant at the same date.
+        const variants = new Set();
+        items.forEach(it => {
+          if (!it || it.completedOn !== date) return;
+          const t = (it.text || '');
+          variants.add(t); variants.add(sentenceCase(t)); variants.add(cleanLower(t));
+        });
+        if (variants.has(desc)) { delete edits[k]; editsChanged = true; }
+      });
+      if (editsChanged) localStorage.setItem('billable_edits_v1', JSON.stringify(edits));
+    }
+
+    localStorage.setItem('billable_dedupe_sentencecase_v1', '1');
+    if (removed > 0) console.info('Removed', removed, 'sentence-cased billable duplicate(s) from unified log.');
+  } catch(e) { console.error('Sentence-case billable dedupe failed', e); }
 })();
 
 // ══════════════════════════════════════════
