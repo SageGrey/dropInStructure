@@ -10374,6 +10374,7 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
         ...row,
         lineItem:    (ov && ov.lineItem != null) ? ov.lineItem : '',
         projectName: (ov && ov.projectName != null) ? ov.projectName : '',
+        externalId:  (ov && ov.externalId != null) ? ov.externalId : '',
         date:        (ov && ov.date) ? ov.date : normalizeDateStr(row.date),
         mins:        (ov && ov.mins != null) ? ov.mins : row.mins,
         desc:        (ov && ov.desc != null) ? ov.desc : row.desc,
@@ -10404,6 +10405,7 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
           project:     proj ? (proj.csvCategory || '') : '',
           lineItem:    proj ? (proj.csvLineItem || '') : '',
           projectName: proj ? (proj.name || '') : '',
+          externalId:  proj ? (proj.externalId || '') : '',
           desc:        ov.desc != null ? ov.desc : (it.text || ''),
           mins:        ov.mins != null ? ov.mins : it.completedMins,
         });
@@ -10471,16 +10473,18 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
 
       const editKey = r._origKey || (r.date + '|' + r.client + '|' + r.project + '|' + r.desc);
 
-      // Normal display cells
+      // Normal display cells — match new column layout:
+      // Date | Client | Category | Line Item | Task (FL Name) | Project ID (FL Name) | Notes | Minutes | Hours
       const cells = [
         { val: r.date,                          extra: 'color:rgba(48,28,29,0.5)' },
         { val: r.client,                        extra: '' },
-        { val: r.project,                       extra: '' },
+        { val: r.project,                       extra: '' },                          // Category
         { val: r.lineItem || '',                extra: 'font-size:11px;color:rgba(48,28,29,0.7)' },
-        { val: r.projectName || '',             extra: '' },
-        { val: r.desc,                          extra: '' },
-        { val: r.mins,                          extra: 'text-align:right' },
-        { val: (Number(r.mins)/60).toFixed(1),  extra: 'text-align:right' },
+        { val: r.projectName || '',             extra: '' },                          // Task (FL Name)
+        { val: r.externalId || '',              extra: 'font-family:"Space Mono",monospace;font-size:11px;color:rgba(48,28,29,0.7);' }, // Project ID (FL Name)
+        { val: r.desc,                          extra: '' },                          // Notes
+        { val: r.mins,                          extra: 'text-align:right' },          // Minutes
+        { val: (Number(r.mins)/60).toFixed(1),  extra: 'text-align:right' },          // Hours
       ];
       cells.forEach(c => {
         const td = document.createElement('td');
@@ -10510,16 +10514,17 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     table.innerHTML = `<thead><tr>
       <th style="${thS}">Date</th>
       <th style="${thS}">Client</th>
-      <th style="${thS}">Project</th>
+      <th style="${thS}">Category</th>
       <th style="${thS}">Line Item</th>
-      <th style="${thS}">Project Name</th>
-      <th style="${thS}">Description</th>
-      <th style="${thS};text-align:right">Min</th>
+      <th style="${thS}">Task (FL Name)</th>
+      <th style="${thS}">Project ID (FL Name)</th>
+      <th style="${thS}">Notes</th>
+      <th style="${thS};text-align:right">Minutes</th>
       <th style="${thS};text-align:right">Hours</th>
       <th style="${thS}"></th>
     </tr></thead>
     <tfoot><tr style="background:#f5f5f0;">
-      <td colspan="6" style="${tdS};font-weight:bold">Total</td>
+      <td colspan="7" style="${tdS};font-weight:bold">Total</td>
       <td style="${tdS};text-align:right;font-weight:bold">${totalMins}</td>
       <td style="${tdS};text-align:right;font-weight:bold">${totalHrs}</td>
       <td style="${tdS}"></td>
@@ -10649,6 +10654,7 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
           project:     proj ? (proj.csvCategory || '') : '',
           lineItem:    proj ? (proj.csvLineItem || '') : '',
           projectName: proj ? (proj.name || '') : '',
+          externalId:  proj ? (proj.externalId || '') : '',
         };
         saveBillableEdits(edits);
       }
@@ -10901,18 +10907,23 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
   window.setBillableMonth = setBillableMonth;
 
   function downloadBillableCSV() {
-    const rows = collectBillableRows();
+    const all = collectBillableRows();
+    // Only export the currently-visible month
+    const monthKey = activeBillableMonth;
+    const rows = monthKey ? all.filter(r => (r.date || '').slice(0, 7) === monthKey) : all;
     const q = s => '"' + String(s == null ? '' : s).replace(/"/g, "'") + '"';
-    let csv = 'date,client,project,line_item,project_name,description,minutes,hours\n';
+    // Headers match the on-screen column order
+    let csv = 'date,client,category,line_item,task_fl_name,project_id_fl_name,notes,minutes,hours\n';
     rows.forEach(r => {
       const hrs = (Number(r.mins) / 60).toFixed(2);
-      csv += `${r.date},${q(r.client)},${q(r.project)},${q(r.lineItem || '')},${q(r.projectName || '')},${q(r.desc)},${r.mins},${hrs}\n`;
+      csv += `${r.date},${q(r.client)},${q(r.project)},${q(r.lineItem || '')},${q(r.projectName || '')},${q(r.externalId || '')},${q(r.desc)},${r.mins},${hrs}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'billable_hours.csv';
+    a.download = monthKey ? `billable_hours_${monthKey}.csv` : 'billable_hours.csv';
     a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   // ── 2-MIN WARNING NUDGE FOR FOCUS (sanctuary) ──
@@ -14348,6 +14359,7 @@ function createProject(data) {
     isFL: !!data.isFL,
     csvCategory: data.csvCategory || null,
     csvLineItem: data.csvLineItem || null,
+    externalId: (data.externalId || '').toString().trim() || null,
     completed: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
@@ -14371,7 +14383,7 @@ window.completeProjectById = completeProjectById;
 function downloadProjectsCSV() {
   const active = loadProjects().filter(p => !p.completed);
   const q = s => '"' + String(s == null ? '' : s).replace(/"/g, "'") + '"';
-  let csv = 'project_name,client,category,line_item,description\n';
+  let csv = 'project_name,project_id,client,category,line_item,description\n';
   active.forEach(p => {
     let desc = '';
     if (p.csvCategory && p.csvLineItem) {
@@ -14382,7 +14394,7 @@ function downloadProjectsCSV() {
       }
     }
     const client = p.isFL ? 'WLFW' : '';
-    csv += `${q(p.name)},${q(client)},${q(p.csvCategory || '')},${q(p.csvLineItem || '')},${q(desc)}\n`;
+    csv += `${q(p.name)},${q(p.externalId || '')},${q(client)},${q(p.csvCategory || '')},${q(p.csvLineItem || '')},${q(desc)}\n`;
   });
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
@@ -14731,11 +14743,18 @@ function edRenderProjects() {
     return `
       <div style="background:#FFFEE7;border:1.5px solid rgba(48,28,29,0.18);padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;${isCompleted ? 'opacity:0.65;' : ''}">
         <div style="flex:1;min-width:240px;">
-          <input type="text" value="${escapeHtml(p.name)}"
-            onchange="edRenameProject('${p.id}', this.value)"
-            style="font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;letter-spacing:0.04em;border:none;background:transparent;width:100%;outline:none;padding:2px 4px;border-radius:2px;"
-            onfocus="this.style.background='rgba(48,28,29,0.05)';"
-            onblur="this.style.background='transparent';">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" value="${escapeHtml(p.name)}"
+              onchange="edRenameProject('${p.id}', this.value)"
+              style="flex:1;min-width:160px;font-family:'Archivo Black',sans-serif;font-size:13px;color:#301C1D;letter-spacing:0.04em;border:none;background:transparent;outline:none;padding:2px 4px;border-radius:2px;"
+              onfocus="this.style.background='rgba(48,28,29,0.05)';"
+              onblur="this.style.background='transparent';">
+            <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.45);">ID</span>
+            <input type="text" value="${escapeHtml(p.externalId || '')}" placeholder="—"
+              onchange="edUpdateProjectExternalId('${p.id}', this.value)"
+              title="Project ID (external identifier from spreadsheet)"
+              style="width:110px;font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;border:1px solid rgba(48,28,29,0.2);background:#FFFEE7;outline:none;padding:3px 6px;">
+          </div>
           <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.6);margin-top:3px;padding-left:4px;">${escapeHtml(p.csvCategory || '')}${p.csvLineItem ? ' › ' + escapeHtml(p.csvLineItem) : ''}</div>
           <div style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.45);margin-top:2px;letter-spacing:0.04em;padding-left:4px;">${count} item${count === 1 ? '' : 's'}${count > 0 ? ` · ${compCount} completed` : ''}</div>
         </div>
@@ -14781,6 +14800,7 @@ function edRenderProjects() {
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <button id="ed-proj-new" style="background:#E94D32;border:1.5px solid #E94D32;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;">+ New Project</button>
         <button id="ed-proj-export" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;">↓ Export CSV</button>
+        <button id="ed-proj-bulk-ids" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;">↑ Bulk Import IDs</button>
         <button id="ed-proj-toggle-comp" style="background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;margin-left:auto;">${showCompleted ? '◐ Hide completed' : '○ Show completed (' + completed.length + ')'}</button>
       </div>
     </div>
@@ -14805,12 +14825,184 @@ function edRenderProjects() {
     showNewProjectModal({ isFL: true, onSave: () => edRenderProjects() });
   };
   document.getElementById('ed-proj-export').onclick = () => downloadProjectsCSV();
+  document.getElementById('ed-proj-bulk-ids').onclick = () => showBulkImportProjectIdsModal();
   document.getElementById('ed-proj-toggle-comp').onclick = () => {
     wrap.dataset.showCompleted = showCompleted ? '' : '1';
     edRenderProjects();
   };
 }
 window.edRenderProjects = edRenderProjects;
+
+function edUpdateProjectExternalId(id, externalId) {
+  const projects = loadProjects();
+  const p = projects.find(p => p.id === id);
+  if (!p) return;
+  const v = (externalId || '').toString().trim();
+  if (v) p.externalId = v;
+  else delete p.externalId;
+  saveProjects(projects);
+}
+window.edUpdateProjectExternalId = edUpdateProjectExternalId;
+
+// ══════════════════════════════════════════
+// ── BULK IMPORT PROJECT IDS FROM SPREADSHEET ──
+// Accepts pasted TSV/CSV text. Each row should be "name<TAB/COMMA>id".
+// Matches by case-insensitive trimmed name. Shows preview before applying.
+// ══════════════════════════════════════════
+function showBulkImportProjectIdsModal() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#FFFEE7;max-width:680px;width:100%;border:2px solid #301C1D;padding:0;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;';
+
+  const hdr = document.createElement('div');
+  hdr.style.cssText = "background:#F7B338;padding:14px 18px;font-family:'Archivo Black',sans-serif;font-size:14px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;";
+  hdr.innerHTML = '<span>Bulk Import Project IDs</span>';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = 'background:none;border:none;color:#E94D32;font-size:22px;cursor:pointer;padding:0;line-height:1;';
+  closeBtn.onclick = () => overlay.remove();
+  hdr.appendChild(closeBtn);
+  box.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1;';
+  box.appendChild(body);
+
+  const intro = document.createElement('div');
+  intro.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.7);line-height:1.55;";
+  intro.innerHTML = 'Paste two columns from a spreadsheet — <strong>project name</strong> and <strong>project ID</strong>, one project per row. Tab-separated (e.g. copied from Google Sheets) or comma-separated both work. Matching is case-insensitive on the trimmed name.';
+  body.appendChild(intro);
+
+  const ta = document.createElement('textarea');
+  ta.placeholder = 'HELENE Workshops\tHEL-001\nBOBSCAPES Map Upgrade\tBOB-002\n...';
+  ta.style.cssText = "width:100%;min-height:160px;border:1.5px solid #301C1D;background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:10px;outline:none;line-height:1.5;resize:vertical;box-sizing:border-box;";
+  body.appendChild(ta);
+
+  const previewBtn = document.createElement('button');
+  previewBtn.textContent = 'Preview Matches';
+  previewBtn.style.cssText = "align-self:flex-start;background:#5b8bd4;border:1.5px solid #5b8bd4;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;";
+  body.appendChild(previewBtn);
+
+  const previewArea = document.createElement('div');
+  previewArea.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+  body.appendChild(previewArea);
+
+  let cachedMatched = [];
+  let cachedUnmatched = [];
+
+  function parseInput(text) {
+    return text.split('\n')
+      .map(line => line.replace(/\r$/, '').trim())
+      .filter(Boolean)
+      .map(line => {
+        const parts = line.includes('\t') ? line.split('\t') : line.split(',');
+        const name = (parts[0] || '').trim().replace(/^"|"$/g, '');
+        const id = (parts.slice(1).join(line.includes('\t') ? '\t' : ',') || '').trim().replace(/^"|"$/g, '');
+        return { name, id };
+      })
+      .filter(r => r.name && r.id);
+  }
+
+  function buildPreview() {
+    previewArea.innerHTML = '';
+    const rows = parseInput(ta.value);
+    if (rows.length === 0) {
+      previewArea.innerHTML = '<div style="font-family:\'Space Mono\',monospace;font-size:12px;color:rgba(48,28,29,0.5);font-style:italic;padding:8px;">Nothing parseable. Each line needs a name and an id.</div>';
+      cachedMatched = []; cachedUnmatched = [];
+      return;
+    }
+    const projects = loadProjects();
+    const byName = new Map();
+    projects.forEach(p => {
+      const k = (p.name || '').toLowerCase().trim();
+      if (!byName.has(k)) byName.set(k, []);
+      byName.get(k).push(p);
+    });
+    cachedMatched = [];
+    cachedUnmatched = [];
+    rows.forEach(r => {
+      const k = r.name.toLowerCase().trim();
+      const cands = byName.get(k) || [];
+      if (cands.length === 1) {
+        cachedMatched.push({ project: cands[0], externalId: r.id, name: r.name });
+      } else if (cands.length > 1) {
+        cachedUnmatched.push({ name: r.name, id: r.id, reason: cands.length + ' projects share this name — ambiguous' });
+      } else {
+        cachedUnmatched.push({ name: r.name, id: r.id, reason: 'no project with this name' });
+      }
+    });
+
+    const sumDiv = document.createElement('div');
+    sumDiv.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;padding:6px 0;letter-spacing:0.04em;";
+    sumDiv.innerHTML = `<strong style="color:#7FA497;">${cachedMatched.length} matched</strong>` + (cachedUnmatched.length ? ` · <strong style="color:#E94D32;">${cachedUnmatched.length} unmatched</strong>` : '');
+    previewArea.appendChild(sumDiv);
+
+    if (cachedMatched.length > 0) {
+      const list = document.createElement('div');
+      list.style.cssText = 'border:1px solid rgba(127,164,151,0.4);background:rgba(127,164,151,0.06);max-height:200px;overflow-y:auto;';
+      cachedMatched.forEach(m => {
+        const row = document.createElement('div');
+        row.style.cssText = "padding:6px 10px;font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;border-bottom:1px solid rgba(127,164,151,0.2);display:flex;justify-content:space-between;gap:8px;";
+        row.innerHTML = `<span>${escapeHtml(m.project.name)}${m.project.externalId ? ` <span style="color:rgba(48,28,29,0.4);">(current: ${escapeHtml(m.project.externalId)})</span>` : ''}</span><span style="color:#7FA497;font-weight:bold;">→ ${escapeHtml(m.externalId)}</span>`;
+        list.appendChild(row);
+      });
+      previewArea.appendChild(list);
+    }
+    if (cachedUnmatched.length > 0) {
+      const list = document.createElement('div');
+      list.style.cssText = 'border:1px solid rgba(233,77,50,0.4);background:rgba(233,77,50,0.05);max-height:200px;overflow-y:auto;';
+      const ulbl = document.createElement('div');
+      ulbl.style.cssText = "padding:6px 10px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#E94D32;border-bottom:1px solid rgba(233,77,50,0.3);";
+      ulbl.textContent = 'Unmatched';
+      list.appendChild(ulbl);
+      cachedUnmatched.forEach(u => {
+        const row = document.createElement('div');
+        row.style.cssText = "padding:6px 10px;font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;border-bottom:1px solid rgba(233,77,50,0.15);";
+        row.innerHTML = `<div>${escapeHtml(u.name)} → ${escapeHtml(u.id)}</div><div style="font-size:10px;color:rgba(48,28,29,0.5);margin-top:2px;">${escapeHtml(u.reason)}</div>`;
+        list.appendChild(row);
+      });
+      previewArea.appendChild(list);
+    }
+
+    if (cachedMatched.length > 0) {
+      const applyBtn = document.createElement('button');
+      applyBtn.textContent = `✓ Apply ${cachedMatched.length} match${cachedMatched.length === 1 ? '' : 'es'}`;
+      applyBtn.style.cssText = "align-self:flex-start;background:#7FA497;border:1.5px solid #7FA497;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;margin-top:6px;";
+      applyBtn.onclick = () => {
+        const projects = loadProjects();
+        let applied = 0;
+        cachedMatched.forEach(m => {
+          const target = projects.find(p => p.id === m.project.id);
+          if (target) { target.externalId = m.externalId; applied++; }
+        });
+        saveProjects(projects);
+        applyBtn.textContent = `✓ Applied ${applied}`;
+        applyBtn.disabled = true;
+        applyBtn.style.opacity = '0.6';
+        // Refresh the projects pane underneath
+        if (typeof edRenderProjects === 'function') try { edRenderProjects(); } catch(e) {}
+      };
+      previewArea.appendChild(applyBtn);
+    }
+  }
+  previewBtn.onclick = buildPreview;
+
+  const footer = document.createElement('div');
+  footer.style.cssText = 'padding:12px 18px;border-top:1px solid rgba(48,28,29,0.12);display:flex;justify-content:flex-end;flex-shrink:0;background:#FFFEE7;';
+  const doneBtn = document.createElement('button');
+  doneBtn.textContent = 'Done';
+  doneBtn.style.cssText = "background:#301C1D;border:none;color:#FFFEE7;font-family:'Archivo Black',sans-serif;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;padding:10px 18px;cursor:pointer;";
+  doneBtn.onclick = () => overlay.remove();
+  footer.appendChild(doneBtn);
+  box.appendChild(footer);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  setTimeout(() => ta.focus(), 50);
+}
+window.showBulkImportProjectIdsModal = showBulkImportProjectIdsModal;
 
 function edRenameProject(id, newName) {
   newName = (newName || '').trim();
