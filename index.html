@@ -10444,12 +10444,16 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     const sortBtnHtml = unassignedCount > 0
       ? `<button onclick="showBillableFixModal()" style="margin-left:12px;background:#5b8bd4;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;">⚠ Sort ${unassignedCount} unassigned</button>`
       : '';
+    const dupGroups = (typeof billableFindDuplicates === 'function') ? billableFindDuplicates() : [];
+    const dupBtnHtml = dupGroups.length > 0
+      ? `<button onclick="showBillableDupesModal()" style="margin-left:8px;background:#E94D32;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;">⚠ ${dupGroups.length} dupe${dupGroups.length === 1 ? '' : 's'}</button>`
+      : '';
 
     tabBar.innerHTML = months.map(m => `
       <button onclick="setBillableMonth('${m}')"
         style="font-family:'Space Mono',monospace;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;
         padding:8px 16px;border:none;cursor:pointer;background:${m===activeBillableMonth?'#F7B338':'#E94D32'};
-        color:${m===activeBillableMonth?'#E94D32':'rgba(255,254,231,0.6)'};transition:all 0.1s;">${fmtMonth(m)}</button>`).join('') + sortBtnHtml;
+        color:${m===activeBillableMonth?'#E94D32':'rgba(255,254,231,0.6)'};transition:all 0.1s;">${fmtMonth(m)}</button>`).join('') + sortBtnHtml + dupBtnHtml;
     const totalMins = monthRows.reduce((s, r) => s + Number(r.mins), 0);
     const totalHrs  = (totalMins / 60).toFixed(1);
 
@@ -10724,6 +10728,167 @@ Went to see LCD spundsytem with Julia. Had a mayday moonswap. Had a great discus
     document.body.appendChild(overlay);
   }
   window.showBillableFixModal = showBillableFixModal;
+
+  // ── Duplicate detection + cleanup ──
+  // Finds groups of completed FL items sharing (completedOn, projectId,
+  // completedMins, normalized text) — typically the same task entered
+  // twice via different paths (FL completion prompt vs Log Hours).
+  function billableNormText(s) {
+    return String(s == null ? '' : s).toLowerCase().trim().replace(/\s+/g,' ').replace(/[.,!?;:'"`]/g,'');
+  }
+  function billableFindDuplicates() {
+    const items = (typeof loadSortItems === 'function') ? loadSortItems() : [];
+    const flCompleted = items.filter(it =>
+      it && it.listCompleted && it.completedOn &&
+      typeof it.completedMins === 'number' && it.completedMins > 0 &&
+      (it.meta === 'fl' || it.projectId)
+    );
+    const groups = new Map();
+    flCompleted.forEach(it => {
+      const k = it.completedOn + '|' + (it.projectId || '') + '|' + it.completedMins + '|' + billableNormText(it.text);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(it);
+    });
+    const dupes = [];
+    groups.forEach(g => { if (g.length > 1) dupes.push(g); });
+    dupes.sort((a, b) => (b[0].completedOn || '').localeCompare(a[0].completedOn || ''));
+    return dupes;
+  }
+  window.billableFindDuplicates = billableFindDuplicates;
+
+  function showBillableDupesModal() {
+    const dupes = billableFindDuplicates();
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#FFFEE7;max-width:760px;width:100%;border:2px solid #301C1D;padding:0;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = "background:#F7B338;padding:14px 18px;font-family:'Archivo Black',sans-serif;font-size:14px;color:#E94D32;letter-spacing:0.06em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;";
+    hdr.innerHTML = `<span>Find Duplicates · ${dupes.length} group${dupes.length === 1 ? '' : 's'}</span>`;
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = 'background:none;border:none;color:#E94D32;font-size:22px;cursor:pointer;padding:0;line-height:1;';
+    closeBtn.onclick = () => { overlay.remove(); renderBillableCSV(); };
+    hdr.appendChild(closeBtn);
+    box.appendChild(hdr);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;flex:1;';
+    box.appendChild(body);
+
+    function deleteItemById(id) {
+      const items = loadSortItems();
+      const idx = items.findIndex(it => it.id == id);
+      if (idx >= 0) {
+        items.splice(idx, 1);
+        saveSortItems(items);
+      }
+    }
+    function markRowDeleted(rowEl) {
+      rowEl.style.opacity = '0.45';
+      rowEl.style.background = 'rgba(233,77,50,0.05)';
+      rowEl.style.textDecoration = 'line-through';
+      const btn = rowEl.querySelector('button');
+      if (btn) { btn.disabled = true; btn.textContent = '✓ Deleted'; btn.style.color = 'rgba(48,28,29,0.4)'; btn.style.borderColor = 'rgba(48,28,29,0.2)'; }
+    }
+    function keepOneInGroup(group, mode, groupEl) {
+      const sorted = group.slice().sort((a, b) => (a.completedAt || '').localeCompare(b.completedAt || ''));
+      const keep = mode === 'newest' ? sorted[sorted.length - 1] : sorted[0];
+      group.forEach(it => {
+        if (it.id !== keep.id) {
+          deleteItemById(it.id);
+          const row = groupEl.querySelector(`[data-item-id="${it.id}"]`);
+          if (row) markRowDeleted(row);
+        }
+      });
+    }
+
+    if (dupes.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:13px;color:rgba(48,28,29,0.6);padding:24px 8px;text-align:center;";
+      empty.textContent = '✓ No duplicates found. Items with the same date, project, minutes, and similar text would be flagged here.';
+      body.appendChild(empty);
+    } else {
+      const intro = document.createElement('div');
+      intro.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.6);margin-bottom:2px;line-height:1.5;";
+      intro.textContent = 'Each group shares (date, project, minutes, similar text). Click × Delete on rows you don\'t want, or use "Keep newest" / "Keep oldest" to bulk-resolve.';
+      body.appendChild(intro);
+
+      dupes.forEach(group => {
+        const groupEl = document.createElement('div');
+        groupEl.style.cssText = "border:1.5px solid rgba(48,28,29,0.2);background:rgba(91,139,212,0.05);";
+
+        const ghdr = document.createElement('div');
+        ghdr.style.cssText = "padding:10px 12px;background:rgba(91,139,212,0.12);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;";
+        const proj = group[0].projectId ? getProject(group[0].projectId) : null;
+        const ghdrText = document.createElement('div');
+        ghdrText.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.04em;";
+        ghdrText.textContent = group[0].completedOn + ' · ' + group[0].completedMins + 'm · ' + (proj ? proj.name : '(no project)') + ' · ' + group.length + ' copies';
+        ghdr.appendChild(ghdrText);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:6px;';
+        const keepNewestBtn = document.createElement('button');
+        keepNewestBtn.textContent = '↑ Keep newest';
+        keepNewestBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.3);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.06em;padding:4px 8px;cursor:pointer;";
+        keepNewestBtn.onclick = () => keepOneInGroup(group, 'newest', groupEl);
+        const keepOldestBtn = document.createElement('button');
+        keepOldestBtn.textContent = '↓ Keep oldest';
+        keepOldestBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.3);color:#301C1D;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.06em;padding:4px 8px;cursor:pointer;";
+        keepOldestBtn.onclick = () => keepOneInGroup(group, 'oldest', groupEl);
+        actions.appendChild(keepNewestBtn);
+        actions.appendChild(keepOldestBtn);
+        ghdr.appendChild(actions);
+        groupEl.appendChild(ghdr);
+
+        const list = document.createElement('div');
+        list.style.cssText = 'display:flex;flex-direction:column;';
+        group.forEach(it => {
+          const row = document.createElement('div');
+          row.dataset.itemId = it.id;
+          row.style.cssText = "padding:10px 12px;border-top:1px solid rgba(48,28,29,0.1);display:flex;justify-content:space-between;align-items:center;gap:8px;background:#FFFEE7;";
+          const text = document.createElement('div');
+          text.style.cssText = 'flex:1;min-width:0;';
+          const txtMain = document.createElement('div');
+          txtMain.style.cssText = "font-family:'Space Mono',monospace;font-size:13px;color:#301C1D;line-height:1.4;word-break:break-word;";
+          txtMain.textContent = it.text || '(no text)';
+          const txtMeta = document.createElement('div');
+          txtMeta.style.cssText = "font-family:'Space Mono',monospace;font-size:9px;color:rgba(48,28,29,0.5);margin-top:2px;letter-spacing:0.04em;";
+          txtMeta.textContent = 'id ' + String(it.id).slice(0, 14) + ' · saved ' + (it.completedAt ? new Date(it.completedAt).toLocaleString() : 'n/a');
+          text.appendChild(txtMain);
+          text.appendChild(txtMeta);
+          const delBtn = document.createElement('button');
+          delBtn.textContent = '× Delete';
+          delBtn.style.cssText = "background:none;border:1.5px solid rgba(233,77,50,0.5);color:#E94D32;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.06em;text-transform:uppercase;padding:5px 10px;cursor:pointer;";
+          delBtn.onclick = () => {
+            deleteItemById(it.id);
+            markRowDeleted(row);
+          };
+          row.appendChild(text);
+          row.appendChild(delBtn);
+          list.appendChild(row);
+        });
+        groupEl.appendChild(list);
+        body.appendChild(groupEl);
+      });
+    }
+
+    const footer = document.createElement('div');
+    footer.style.cssText = 'padding:12px 18px;border-top:1px solid rgba(48,28,29,0.12);display:flex;justify-content:flex-end;flex-shrink:0;background:#FFFEE7;';
+    const doneBtn = document.createElement('button');
+    doneBtn.textContent = 'Done';
+    doneBtn.style.cssText = "background:#301C1D;border:none;color:#FFFEE7;font-family:'Archivo Black',sans-serif;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;padding:10px 18px;cursor:pointer;";
+    doneBtn.onclick = () => { overlay.remove(); renderBillableCSV(); };
+    footer.appendChild(doneBtn);
+    box.appendChild(footer);
+
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); renderBillableCSV(); } });
+    document.body.appendChild(overlay);
+  }
+  window.showBillableDupesModal = showBillableDupesModal;
 
   function setBillableMonth(m) {
     activeBillableMonth = m;
@@ -14921,6 +15086,17 @@ function showLogHoursModal() {
     if (!text) { flashErr(taskInp); taskInp.focus(); return; }
     if (!mins || mins < 1) { flashErr(minsInp); minsInp.focus(); return; }
     const date = dateInp.value;
+    // Soft duplicate check — same date/project/mins + similar text already exists?
+    const items = loadSortItems();
+    const norm = s => String(s || '').toLowerCase().trim().replace(/\s+/g,' ').replace(/[.,!?;:'"`]/g,'');
+    const target = norm(text);
+    const dupe = items.find(it =>
+      it.listCompleted && it.completedOn === date && it.projectId === projectId &&
+      it.completedMins === mins && norm(it.text) === target
+    );
+    if (dupe) {
+      if (!confirm(`A matching entry already exists for ${date}:\n\n  "${dupe.text}"  (${dupe.completedMins}m, same project)\n\nAdd another anyway?`)) return;
+    }
     const newItem = {
       id: 'lh_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       text,
@@ -14932,7 +15108,6 @@ function showLogHoursModal() {
       completedAt: new Date().toISOString(),
       completedMins: mins,
     };
-    const items = loadSortItems();
     items.push(newItem);
     saveSortItems(items);
     if (typeof ensureDailyLogEntry === 'function') try { ensureDailyLogEntry(date); } catch(e) {}
