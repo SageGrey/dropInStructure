@@ -2009,6 +2009,7 @@
   <button onclick="showSection('sorting', this)" style="display:none">Sort</button>
   <button onclick="showFLList(this)" id="fl-list-tab">FL</button>
   <button onclick="showNonFLList(this)" id="non-fl-list-tab">Non-FL</button>
+  <button onclick="showSection('weeklybilling', this)" id="weekly-billing-tab">Weekly Billing</button>
   <button onclick="showSection('conversations', this)" id="conversations-tab">Convos</button>
   <button onclick="showSection('procedures', this)" id="procedures-tab">Procedures</button>
   <button onclick="showSection('ideas', this)" id="ideas-tab">Ideas</button>
@@ -2491,6 +2492,11 @@
       <!-- Table per month -->
       <div id="billableTable" style="overflow-x:auto;"></div>
     </div>
+  </div>
+
+  <!-- ══ WEEKLY BILLING ══ -->
+  <div id="weeklybilling" class="section">
+    <div id="weekly-billing-content"></div>
   </div>
 
   <!-- ══ HIGHLIGHTS ══ -->
@@ -3658,6 +3664,7 @@
     if (id === 'archive' && window.twRenderArchive) window.twRenderArchive();
     if (id === 'today')      { try { renderTodayTab(); } catch(e) { console.error(e); } }
     if (id === 'sortedlist') { try { renderSortedList(); } catch(e) {} }
+    if (id === 'weeklybilling') { try { renderWeeklyBilling(); } catch(e) { console.error(e); } }
     if (id === 'pastlogs')   { try { renderPastLogs();   } catch(e) { console.error(e); } }
     if (id === 'highlights') { try { renderHighlights(); } catch(e) { console.error(e); } }
     if (id === 'notches')    { try { renderAllNotches(); } catch(e) { console.error(e); } }
@@ -14717,6 +14724,961 @@ function escapeHtml(s) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// ══════════════════════════════════════════
+// ── WEEKLY BILLING ──
+// Starts July 2026. Weeks are Saturday→Friday, clipped to the calendar
+// month at both ends. Each week entry captures:
+//   - projects worked on (checkbox picks)
+//   - a description per selected project
+//   - per-day hours (Sat–Fri) with mode: full (7h) / half (4h) / other
+//   - allocated hours per project (sums to daily total)
+// ══════════════════════════════════════════
+const WEEKLY_BILLING_KEY = 'weekly_billing_v1';
+const WEEKLY_BILLING_NARRATIVES_KEY = 'weekly_billing_narratives_v1';
+const WB_START_MONTH = '2026-07';
+const WB_FULL_HOURS = 7;
+const WB_HALF_HOURS = 4;
+let wbActiveMonth = null;
+
+// Narratives: per (month, project), shared across every week in that month.
+// Storage shape: { 'YYYY-MM|projectId': 'narrative text' }
+function wbLoadNarratives() {
+  try { return JSON.parse(localStorage.getItem(WEEKLY_BILLING_NARRATIVES_KEY) || '{}') || {}; }
+  catch { return {}; }
+}
+function wbSaveNarratives(data) {
+  try { localStorage.setItem(WEEKLY_BILLING_NARRATIVES_KEY, JSON.stringify(data)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+function wbGetNarrative(monthKey, projectId) {
+  return wbLoadNarratives()[monthKey + '|' + projectId] || '';
+}
+function wbSetNarrative(monthKey, projectId, text) {
+  const all = wbLoadNarratives();
+  const k = monthKey + '|' + projectId;
+  const v = (text || '').trim();
+  if (v) all[k] = text; else delete all[k];
+  wbSaveNarratives(all);
+}
+
+function loadWeeklyBilling() {
+  try { return JSON.parse(localStorage.getItem(WEEKLY_BILLING_KEY) || '{}') || {}; }
+  catch { return {}; }
+}
+function saveWeeklyBilling(data) {
+  try { localStorage.setItem(WEEKLY_BILLING_KEY, JSON.stringify(data)); } catch {}
+  if (typeof gistMarkDirty === 'function') gistMarkDirty();
+}
+
+// Formatting helpers
+function wbFmtIso(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function wbFmtShort(d) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getMonth()] + ' ' + d.getDate();
+}
+function wbDowName(d) {
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+}
+function wbFmtMonthLabel(monthKey) {
+  const mNames = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+  const [y, m] = monthKey.split('-');
+  return mNames[parseInt(m)] + ' ' + y;
+}
+
+// Weeks in a month: Monday→Sunday, clipped to month bounds
+function wbGetWeeksForMonth(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const monthEnd = new Date(y, m, 0);
+  const weeks = [];
+  let cursor = new Date(y, m - 1, 1);
+  let weekNum = 1;
+  while (cursor <= monthEnd) {
+    const dow = cursor.getDay(); // 0=Sun ... 6=Sat
+    // Days from cursor to the next Sunday (Sun=0).
+    // Sun=0 → 0, Mon=1 → 6, Tue=2 → 5, ..., Sat=6 → 1.
+    const daysToSun = (0 - dow + 7) % 7;
+    const weekEnd = new Date(cursor);
+    weekEnd.setDate(cursor.getDate() + daysToSun);
+    if (weekEnd > monthEnd) weekEnd.setTime(monthEnd.getTime());
+    weeks.push({ num: weekNum++, start: new Date(cursor), end: new Date(weekEnd) });
+    cursor = new Date(weekEnd);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return weeks;
+}
+
+// Find the saved entry whose weekStart falls inside [week.start, week.end].
+// Handles legacy entries saved under a different week scheme (e.g. Sat-Fri)
+// by matching them to whichever new week contains their start date.
+function wbGetEntryForWeek(data, week) {
+  const startIso = wbFmtIso(week.start);
+  const endIso = wbFmtIso(week.end);
+  // Exact match first (most common)
+  if (data[startIso]) return { key: startIso, entry: data[startIso] };
+  for (const k of Object.keys(data)) {
+    if (k >= startIso && k <= endIso) return { key: k, entry: data[k] };
+  }
+  return null;
+}
+
+// List each day inside a week (as Date + iso + dow label)
+function wbListDaysInWeek(week) {
+  const days = [];
+  const cursor = new Date(week.start);
+  while (cursor <= week.end) {
+    days.push({ date: new Date(cursor), iso: wbFmtIso(cursor), dow: wbDowName(cursor) });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+// Find the week containing a given Date (within its month)
+function wbFindWeekForDate(date) {
+  const monthKey = date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0');
+  const weeks = wbGetWeeksForMonth(monthKey);
+  return weeks.find(w => date >= w.start && date <= w.end) || null;
+}
+
+// Available months: from WB_START_MONTH through the max of (current month, any month with data)
+function wbGetAvailableMonths() {
+  const now = new Date();
+  const nowKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  const set = new Set();
+  // Walk months from start to now
+  const [sy, sm] = WB_START_MONTH.split('-').map(Number);
+  let cy = sy, cm = sm;
+  while (true) {
+    const k = cy + '-' + String(cm).padStart(2,'0');
+    set.add(k);
+    if (k >= nowKey) break;
+    cm++;
+    if (cm > 12) { cm = 1; cy++; }
+    if (cy > sy + 5) break; // safety cap
+  }
+  // Include any months present in saved data
+  const data = loadWeeklyBilling();
+  Object.keys(data).forEach(k => { if (k >= WB_START_MONTH + '-01') set.add(k.slice(0,7)); });
+  return Array.from(set).sort();
+}
+
+function wbSetMonth(m) { wbActiveMonth = m; renderWeeklyBilling(); }
+window.wbSetMonth = wbSetMonth;
+
+// Render the Weekly Billing tab
+function renderWeeklyBilling() {
+  const el = document.getElementById('weekly-billing-content');
+  if (!el) return;
+  const months = wbGetAvailableMonths();
+  if (!wbActiveMonth || !months.includes(wbActiveMonth)) {
+    // Default to current month if it's in range, else the latest
+    const now = new Date();
+    const nowKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    wbActiveMonth = months.includes(nowKey) ? nowKey : months[months.length - 1];
+  }
+
+  const weeks = wbGetWeeksForMonth(wbActiveMonth);
+  const data = loadWeeklyBilling();
+
+  // Header
+  let html = `
+    <div style="padding:24px 16px;">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
+        <h2 style="font-family:'Archivo Black',sans-serif;font-size:22px;color:#FFFEE7;margin:0;letter-spacing:0.04em;text-transform:uppercase;">Weekly Billing</h2>
+        <button onclick="showLogWeeklyHoursModal()" style="background:#E94D32;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 16px;cursor:pointer;">+ Log This Week</button>
+        <button onclick="downloadWeeklyBillingCSV()" style="background:none;border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.7);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:7px 12px;cursor:pointer;">↓ Export CSV</button>
+      </div>
+
+      <div style="display:flex;gap:2px;flex-wrap:wrap;background:#301C1D;padding:2px;width:fit-content;margin-bottom:14px;">
+        ${months.map(m => `<button onclick="wbSetMonth('${m}')" style="font-family:'Space Mono',monospace;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 16px;border:none;cursor:pointer;background:${m===wbActiveMonth?'#F7B338':'#E94D32'};color:${m===wbActiveMonth?'#E94D32':'rgba(255,254,231,0.6)'};transition:all 0.1s;">${wbFmtMonthLabel(m)}</button>`).join('')}
+      </div>
+      <!-- Month narrative section injected below -->
+      <div id="wb-month-narratives"></div>
+  `;
+
+  // Helper: normalize an entry's items into a consistent shape
+  // { category, lineItem, description, hours, matchedProject } regardless of
+  // whether it was saved as new-format (items) or legacy project-based.
+  function wbNormalizeItems(entry) {
+    if (!entry) return [];
+    const items = entry.items || entry.projects || [];
+    return items.map(e => {
+      let cat, li, projectId = e.projectId || null;
+      if (e.category != null && e.lineItem != null) {
+        cat = e.category; li = e.lineItem;
+      } else if (projectId && typeof getProject === 'function') {
+        const p = getProject(projectId);
+        cat = p ? (p.csvCategory || '') : '';
+        li = p ? (p.csvLineItem || '') : '';
+      } else { cat = ''; li = ''; }
+      // Match a user project by (category, lineItem) if we don't already have one
+      let matched = projectId && typeof getProject === 'function' ? getProject(projectId) : null;
+      if (!matched && typeof loadProjects === 'function') {
+        const matches = loadProjects().filter(p => p.isFL && p.csvCategory === cat && p.csvLineItem === li);
+        if (matches.length === 1) matched = matches[0];
+      }
+      return {
+        category: cat,
+        lineItem: li,
+        description: e.description || '',
+        hours: Number(e.hours) || 0,
+        matchedProject: matched,
+      };
+    });
+  }
+
+  // Weekly blocks
+  let monthTotalHrs = 0;
+  weeks.forEach(week => {
+    const key = wbFmtIso(week.start);
+    const found = wbGetEntryForWeek(data, week);
+    const entry = found ? found.entry : null;
+    const dayTotal = entry ? Object.values(entry.days || {}).reduce((s, d) => s + (Number(d.hours) || 0), 0) : 0;
+    const normItems = wbNormalizeItems(entry);
+    const projTotal = normItems.reduce((s, i) => s + i.hours, 0);
+    monthTotalHrs += projTotal;
+
+    html += `
+      <div style="background:#FFFEE7;border:2px solid rgba(48,28,29,0.15);margin-bottom:12px;">
+        <div style="background:#301C1D;color:#F7B338;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div>
+            <span style="font-family:'Archivo Black',sans-serif;font-size:14px;letter-spacing:0.08em;text-transform:uppercase;">Week ${week.num}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.7);margin-left:8px;">${wbFmtShort(week.start)} – ${wbFmtShort(week.end)}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.75);">${entry ? `${dayTotal}h logged · ${projTotal}h allocated` : 'Not logged yet'}</span>
+            <button onclick="showLogWeeklyHoursModal('${key}')" style="background:${entry?'none':'#E94D32'};border:${entry?'1.5px solid rgba(255,254,231,0.35)':'none'};color:${entry?'#F7B338':'#FFFEE7'};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">${entry ? '✎ Edit' : '+ Log'}</button>
+          </div>
+        </div>
+    `;
+    if (entry) {
+      // Day summary strip
+      const dayStrip = wbListDaysInWeek(week).map(d => {
+        const dInfo = (entry.days || {})[d.iso];
+        return `<span style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.7);margin-right:10px;">${d.dow} ${d.date.getDate()}: <strong>${dInfo ? dInfo.hours + 'h' : '—'}</strong></span>`;
+      }).join('');
+      html += `<div style="padding:8px 14px;border-bottom:1px solid rgba(48,28,29,0.1);background:rgba(91,139,212,0.05);">${dayStrip}</div>`;
+
+      // Line items (normalized to a shared shape whether legacy or new-format)
+      if (normItems.length === 0) {
+        html += `<div style="padding:12px 14px;font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);font-style:italic;">No line items logged for this week.</div>`;
+      } else {
+        html += `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:12px;">
+          <thead><tr style="background:#f5f5f0;">
+            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Category</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Line Item</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Task (FL Name)</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Project ID</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Description</th>
+            <th style="padding:7px 12px;text-align:right;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Hours</th>
+          </tr></thead>
+          <tbody>`;
+        normItems.forEach(pe => {
+          const proj = pe.matchedProject;
+          html += `<tr>
+            <td style="padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(pe.category)}</td>
+            <td style="padding:8px 12px;color:rgba(48,28,29,0.75);font-size:11px;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(pe.lineItem)}</td>
+            <td style="padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(proj ? (proj.name || '') : '')}</td>
+            <td style="padding:8px 12px;color:rgba(48,28,29,0.7);font-size:11px;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(proj ? (proj.externalId || '') : '')}</td>
+            <td style="padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(pe.description)}</td>
+            <td style="padding:8px 12px;color:#301C1D;text-align:right;border-bottom:1px solid rgba(48,28,29,0.08);">${pe.hours}</td>
+          </tr>`;
+        });
+        html += `</tbody></table></div>`;
+      }
+    }
+    html += `</div>`;
+  });
+
+  html += `
+    <div style="font-family:'Space Mono',monospace;font-size:12px;color:rgba(255,254,231,0.65);letter-spacing:0.06em;padding:8px 4px;">Month total allocated: <strong style="color:#F7B338;">${monthTotalHrs}h</strong> (${(monthTotalHrs/7).toFixed(1)} days at 7h/day)</div>
+    </div>
+  `;
+  el.innerHTML = html;
+
+  // Populate the month-narrative section with editable textareas.
+  // Each project that appears in ANY logged week this month gets one row;
+  // edits save (debounced) via wbSetNarrative and roll over to every week.
+  const narrHost = document.getElementById('wb-month-narratives');
+  if (narrHost) {
+    const projectIdsInMonth = new Set();
+    weeks.forEach(week => {
+      const found = wbGetEntryForWeek(data, week);
+      if (!found) return;
+      wbNormalizeItems(found.entry).forEach(pe => {
+        if (pe.matchedProject) projectIdsInMonth.add(pe.matchedProject.id);
+      });
+    });
+    if (projectIdsInMonth.size > 0) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'background:#FFFEE7;border:2px solid rgba(91,139,212,0.35);margin-bottom:14px;';
+      const hdr = document.createElement('div');
+      hdr.style.cssText = "background:rgba(91,139,212,0.12);padding:10px 14px;font-family:'Archivo Black',sans-serif;font-size:12px;color:#5b8bd4;letter-spacing:0.1em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;";
+      hdr.innerHTML = `<span>Month Narrative</span><span style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.55);letter-spacing:0.06em;text-transform:none;">One entry per FL Task — shared across every week in ${wbFmtMonthLabel(wbActiveMonth)}. Edits save automatically.</span>`;
+      wrap.appendChild(hdr);
+      const body = document.createElement('div');
+      body.style.cssText = 'padding:12px 14px;display:flex;flex-direction:column;gap:10px;';
+      wrap.appendChild(body);
+      // Sort projects by CSV category order, then by name
+      const csvOrder = FL_BILLING_DATA.map(c => c.category);
+      const list = Array.from(projectIdsInMonth).map(id => getProject(id)).filter(Boolean);
+      list.sort((a, b) => {
+        const ai = csvOrder.indexOf(a.csvCategory || ''), bi = csvOrder.indexOf(b.csvCategory || '');
+        const ac = ai === -1 ? 999 : ai, bc = bi === -1 ? 999 : bi;
+        if (ac !== bc) return ac - bc;
+        return (a.name||'').localeCompare(b.name||'');
+      });
+      list.forEach(p => {
+        const block = document.createElement('div');
+        block.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+        const lbl = document.createElement('div');
+        lbl.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.04em;";
+        lbl.innerHTML = `<strong style="color:#5b8bd4;">${escapeHtml(p.name)}</strong>` + (p.csvLineItem ? ` <span style="color:rgba(48,28,29,0.55);font-size:10px;">— ${escapeHtml(p.csvLineItem)}</span>` : '');
+        const ta = document.createElement('textarea');
+        ta.value = wbGetNarrative(wbActiveMonth, p.id);
+        ta.placeholder = 'What has this task looked like across the month so far?';
+        ta.style.cssText = "width:100%;min-height:52px;border:1.5px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;box-sizing:border-box;resize:vertical;";
+        let saveTimer;
+        ta.addEventListener('input', () => {
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => wbSetNarrative(wbActiveMonth, p.id, ta.value), 400);
+        });
+        ta.addEventListener('blur', () => { clearTimeout(saveTimer); wbSetNarrative(wbActiveMonth, p.id, ta.value); });
+        block.appendChild(lbl);
+        block.appendChild(ta);
+        body.appendChild(block);
+      });
+      narrHost.appendChild(wrap);
+    }
+  }
+}
+window.renderWeeklyBilling = renderWeeklyBilling;
+
+// ── Log Weekly Hours modal ──
+// Four sections in one page:
+//   1. Projects worked on this week (checkboxes + new project inline)
+//   2. Descriptions per selected project
+//   3. Days worked (Sat–Fri): full 7h / half 4h / other N
+//   4. Allocate total hours per project (with over/under indicator)
+function showLogWeeklyHoursModal(weekKeyArg) {
+  // Resolve the week to log. weekKeyArg is an ISO date (week start).
+  // Default: current week (today's Sat→Fri window intersected with today's month).
+  let targetWeek;
+  if (weekKeyArg) {
+    const d = new Date(weekKeyArg + 'T12:00:00');
+    targetWeek = wbFindWeekForDate(d);
+  } else {
+    targetWeek = wbFindWeekForDate(new Date());
+  }
+  if (!targetWeek) {
+    // Fallback: first week of the active month
+    const weeks = wbGetWeeksForMonth(wbActiveMonth || WB_START_MONTH);
+    targetWeek = weeks[0];
+  }
+
+  const monthKey = targetWeek.start.getFullYear() + '-' + String(targetWeek.start.getMonth()+1).padStart(2,'0');
+  const weekKey = wbFmtIso(targetWeek.start);
+  const data = loadWeeklyBilling();
+  const _found = wbGetEntryForWeek(data, targetWeek);
+  const existing = _found ? _found.entry : null;
+  const existingKey = _found ? _found.key : null;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(48,28,29,0.72);display:flex;align-items:center;justify-content:center;padding:20px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#FFFEE7;max-width:720px;width:100%;border:2px solid #301C1D;padding:0;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;';
+
+  const hdr = document.createElement('div');
+  hdr.style.cssText = "background:#F7B338;padding:10px 16px;font-family:'Archivo Black',sans-serif;font-size:12px;color:#E94D32;letter-spacing:0.08em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:8px;";
+  const hdrTitle = document.createElement('div');
+  hdrTitle.innerHTML = `<span>Week ${targetWeek.num}</span>`;
+  hdr.appendChild(hdrTitle);
+  const navWrap = document.createElement('div');
+  navWrap.style.cssText = 'display:flex;gap:6px;align-items:center;';
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = '‹ Prev Week';
+  prevBtn.title = 'Previous week';
+  prevBtn.style.cssText = "background:none;border:1.5px solid #E94D32;color:#E94D32;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;padding:4px 8px;cursor:pointer;";
+  prevBtn.onclick = () => {
+    const prevDay = new Date(targetWeek.start);
+    prevDay.setDate(prevDay.getDate() - 1);
+    overlay.remove();
+    showLogWeeklyHoursModal(wbFmtIso(prevDay));
+  };
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = 'Next Week ›';
+  nextBtn.title = 'Next week';
+  nextBtn.style.cssText = "background:none;border:1.5px solid #E94D32;color:#E94D32;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;padding:4px 8px;cursor:pointer;";
+  nextBtn.onclick = () => {
+    const nextDay = new Date(targetWeek.end);
+    nextDay.setDate(nextDay.getDate() + 1);
+    overlay.remove();
+    showLogWeeklyHoursModal(wbFmtIso(nextDay));
+  };
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = 'background:none;border:none;color:#E94D32;font-size:22px;cursor:pointer;padding:0;line-height:1;margin-left:6px;';
+  closeBtn.onclick = () => overlay.remove();
+  navWrap.appendChild(prevBtn);
+  navWrap.appendChild(nextBtn);
+  navWrap.appendChild(closeBtn);
+  hdr.appendChild(navWrap);
+  box.appendChild(hdr);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;flex:1;';
+  box.appendChild(body);
+
+  // Dramatic hero title — sits at the top of the scrollable body so it
+  // scrolls away as the user works through the sections below. The compact
+  // yellow header (Week N + prev/next/close) stays pinned above.
+  const heroWrap = document.createElement('div');
+  heroWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;padding:8px 0 4px;margin-bottom:-4px;';
+  const hero = document.createElement('div');
+  hero.style.cssText = "font-family:'Archivo Black',sans-serif;font-size:clamp(52px,10vw,96px);line-height:0.88;color:#7A2828;letter-spacing:-0.02em;text-transform:uppercase;word-break:break-word;";
+  hero.textContent = 'Log Week ' + targetWeek.num;
+  const heroSub = document.createElement('div');
+  heroSub.style.cssText = "font-family:'Space Mono',monospace;font-size:14px;color:rgba(48,28,29,0.65);letter-spacing:0.04em;margin-top:10px;";
+  heroSub.textContent = wbFmtShort(targetWeek.start) + ' – ' + wbFmtShort(targetWeek.end);
+  heroWrap.appendChild(hero);
+  heroWrap.appendChild(heroSub);
+  body.appendChild(heroWrap);
+
+  const sectionLabelCss = "font-family:'Archivo Black',sans-serif;font-size:12px;color:#E94D32;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;";
+  const sectionSubCss = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.6);margin-bottom:8px;";
+
+  // State — FL Task Name (user project) based
+  const state = {
+    selectedProjectIds: new Set(),
+    descriptions: {}, // projectId → string
+    days: {},         // dateIso → { mode: 'none'|'full'|'half'|'other', hours: number }
+    allocations: {},  // projectId → number (hours)
+  };
+  // Load existing entries — supports both new-format (items with
+  // category+lineItem) and project-based entries. For items with only a
+  // category+lineItem, try to auto-map to a matching FL project.
+  const _legacyEntries = existing ? (existing.items || existing.projects || []) : [];
+  _legacyEntries.forEach(e => {
+    let projectId = e.projectId || null;
+    if (!projectId && e.category != null && typeof loadProjects === 'function') {
+      const cands = loadProjects().filter(p => p.isFL && p.csvCategory === e.category && (p.csvLineItem || '') === (e.lineItem || ''));
+      if (cands.length === 1) projectId = cands[0].id;
+    }
+    if (!projectId) return;
+    state.selectedProjectIds.add(projectId);
+    state.descriptions[projectId] = e.description || '';
+    state.allocations[projectId] = Number(e.hours) || 0;
+  });
+  Object.entries((existing && existing.days) || {}).forEach(([iso, d]) => {
+    state.days[iso] = { mode: d.mode || 'none', hours: Number(d.hours) || 0 };
+  });
+
+  // ── Section 1: FL Tasks worked on ──
+  const s1 = document.createElement('div');
+  const s1lbl = document.createElement('div');
+  s1lbl.style.cssText = sectionLabelCss;
+  s1lbl.textContent = '1. FL Tasks worked on this week';
+  s1.appendChild(s1lbl);
+  const s1sub = document.createElement('div');
+  s1sub.style.cssText = sectionSubCss;
+  s1sub.textContent = 'Check the FL Task Names you worked on. If a task isn\'t listed, use + New Task — you\'ll be asked which CSV Category + Line Item it falls under.';
+  s1.appendChild(s1sub);
+  const projList = document.createElement('div');
+  projList.style.cssText = 'display:flex;flex-direction:column;gap:4px;max-height:340px;overflow-y:auto;border:1px solid rgba(48,28,29,0.15);padding:6px 4px;';
+  s1.appendChild(projList);
+  const s1actions = document.createElement('div');
+  s1actions.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
+  const addProjBtn = document.createElement('button');
+  addProjBtn.textContent = '+ New Task';
+  addProjBtn.title = 'Create a new FL Task (project) — will ask for CSV Category + Line Item';
+  addProjBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.3);color:#301C1D;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;cursor:pointer;";
+  addProjBtn.onclick = () => {
+    if (typeof showNewProjectModal !== 'function') return;
+    showNewProjectModal({ isFL: true, onSave: (proj) => {
+      state.selectedProjectIds.add(proj.id);
+      state.descriptions[proj.id] = state.descriptions[proj.id] || '';
+      state.allocations[proj.id] = state.allocations[proj.id] || 0;
+      renderProjList();
+      renderDescriptions();
+      renderNarratives();
+      renderAllocations();
+    }});
+  };
+  s1actions.appendChild(addProjBtn);
+  s1.appendChild(s1actions);
+  body.appendChild(s1);
+
+  function renderProjList() {
+    projList.innerHTML = '';
+    const active = (typeof getActiveFLProjects === 'function') ? getActiveFLProjects() : [];
+    // Ensure any currently-selected project appears even if completed/archived
+    const knownIds = new Set(active.map(p => p.id));
+    state.selectedProjectIds.forEach(id => {
+      if (!knownIds.has(id) && typeof getProject === 'function') {
+        const p = getProject(id);
+        if (p) active.push(p);
+      }
+    });
+    // Group by CSV category, preserve CSV order
+    const csvOrder = (typeof FL_BILLING_DATA !== 'undefined') ? FL_BILLING_DATA.map(c => c.category) : [];
+    const grouped = {};
+    active.forEach(p => {
+      const cat = p.csvCategory || '(No category)';
+      (grouped[cat] = grouped[cat] || []).push(p);
+    });
+    const orderedCats = csvOrder.filter(c => grouped[c]);
+    Object.keys(grouped).sort().forEach(c => { if (!orderedCats.includes(c)) orderedCats.push(c); });
+    orderedCats.forEach(cat => {
+      const catHdr = document.createElement('div');
+      catHdr.style.cssText = "font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:#E94D32;padding:6px 4px 3px;font-weight:bold;";
+      catHdr.textContent = cat;
+      projList.appendChild(catHdr);
+      grouped[cat]
+        .slice()
+        .sort((a,b) => (a.name||'').localeCompare(b.name||''))
+        .forEach(p => {
+          const row = document.createElement('label');
+          row.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(48,28,29,0.03);cursor:pointer;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;";
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = state.selectedProjectIds.has(p.id);
+          cb.style.cursor = 'pointer';
+          cb.addEventListener('change', () => {
+            if (cb.checked) {
+              state.selectedProjectIds.add(p.id);
+              if (state.descriptions[p.id] === undefined) state.descriptions[p.id] = '';
+              if (state.allocations[p.id] === undefined) state.allocations[p.id] = 0;
+            } else {
+              state.selectedProjectIds.delete(p.id);
+            }
+            renderDescriptions();
+            renderNarratives();
+            renderAllocations();
+          });
+          row.appendChild(cb);
+          const label = document.createElement('span');
+          const line = p.csvLineItem ? ` — ${p.csvLineItem}` : '';
+          label.innerHTML = `${escapeHtml(p.name)}<span style="color:rgba(48,28,29,0.5);font-size:11px;">${escapeHtml(line)}</span>`;
+          row.appendChild(label);
+          projList.appendChild(row);
+        });
+    });
+    if (active.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);padding:6px 4px;font-style:italic;";
+      empty.textContent = 'No active FL tasks yet. Click + New Task to add one.';
+      projList.appendChild(empty);
+    }
+  }
+
+  // ── Section 2: Descriptions ──
+  const s2 = document.createElement('div');
+  const s2lbl = document.createElement('div');
+  s2lbl.style.cssText = sectionLabelCss;
+  s2lbl.textContent = '2. What did you do on each?';
+  s2.appendChild(s2lbl);
+  const descWrap = document.createElement('div');
+  descWrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+  s2.appendChild(descWrap);
+  body.appendChild(s2);
+
+  function renderDescriptions() {
+    descWrap.innerHTML = '';
+    if (state.selectedProjectIds.size === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);font-style:italic;";
+      empty.textContent = 'Select FL Tasks above to write descriptions.';
+      descWrap.appendChild(empty);
+      return;
+    }
+    state.selectedProjectIds.forEach(id => {
+      const p = (typeof getProject === 'function') ? getProject(id) : null;
+      const block = document.createElement('div');
+      block.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+      const lbl = document.createElement('div');
+      lbl.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.04em;";
+      if (p) {
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'color:#E94D32;font-weight:bold;';
+        nameSpan.textContent = p.name || '(unnamed)';
+        lbl.appendChild(nameSpan);
+        if (p.csvLineItem) lbl.appendChild(document.createTextNode(' — ' + p.csvLineItem));
+      } else {
+        lbl.textContent = '(unknown FL Task)';
+      }
+      const ta = document.createElement('textarea');
+      ta.placeholder = 'Short description of what you did…';
+      ta.value = state.descriptions[id] || '';
+      ta.style.cssText = "width:100%;min-height:52px;border:1.5px solid rgba(48,28,29,0.25);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;box-sizing:border-box;resize:vertical;";
+      ta.addEventListener('input', () => { state.descriptions[id] = ta.value; });
+      block.appendChild(lbl);
+      block.appendChild(ta);
+      descWrap.appendChild(block);
+    });
+  }
+
+  // ── Section 3: Days worked ──
+  const s3 = document.createElement('div');
+  const s3lbl = document.createElement('div');
+  s3lbl.style.cssText = sectionLabelCss;
+  s3lbl.textContent = '3. Days worked';
+  s3.appendChild(s3lbl);
+  const s3sub = document.createElement('div');
+  s3sub.style.cssText = sectionSubCss;
+  s3sub.textContent = 'None = 0h · Full = 7h · Half = 4h · Other = enter hours';
+  s3.appendChild(s3sub);
+  const daysGrid = document.createElement('div');
+  daysGrid.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+  s3.appendChild(daysGrid);
+  const daysTotal = document.createElement('div');
+  daysTotal.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;padding:8px 4px;font-weight:bold;border-top:1px solid rgba(48,28,29,0.15);margin-top:6px;";
+  s3.appendChild(daysTotal);
+  body.appendChild(s3);
+
+  function totalDayHours() {
+    return Object.values(state.days).reduce((s, d) => s + (Number(d.hours) || 0), 0);
+  }
+
+  function renderDays() {
+    daysGrid.innerHTML = '';
+    const days = wbListDaysInWeek(targetWeek);
+    days.forEach(d => {
+      const cur = state.days[d.iso] || { mode: 'none', hours: 0 };
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 8px;background:rgba(48,28,29,0.03);';
+      const label = document.createElement('div');
+      label.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;min-width:80px;";
+      label.textContent = d.dow + ' ' + d.date.getDate();
+      row.appendChild(label);
+      const mkRadio = (mode, text) => {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;display:flex;align-items:center;gap:4px;cursor:pointer;";
+        const r = document.createElement('input');
+        r.type = 'radio';
+        r.name = 'wb-day-' + d.iso;
+        r.checked = cur.mode === mode;
+        r.addEventListener('change', () => {
+          if (mode === 'full')      state.days[d.iso] = { mode, hours: WB_FULL_HOURS };
+          else if (mode === 'half') state.days[d.iso] = { mode, hours: WB_HALF_HOURS };
+          else if (mode === 'none') state.days[d.iso] = { mode, hours: 0 };
+          else                      state.days[d.iso] = { mode: 'other', hours: state.days[d.iso] ? state.days[d.iso].hours : 0 };
+          renderDays();
+          renderAllocations();
+        });
+        wrap.appendChild(r);
+        wrap.appendChild(document.createTextNode(text));
+        return wrap;
+      };
+      row.appendChild(mkRadio('none', 'None'));
+      row.appendChild(mkRadio('full', 'Full (7h)'));
+      row.appendChild(mkRadio('half', 'Half (4h)'));
+      row.appendChild(mkRadio('other', 'Other'));
+      if (cur.mode === 'other') {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '0';
+        inp.step = '0.25';
+        inp.value = cur.hours || '';
+        inp.placeholder = 'h';
+        inp.style.cssText = "width:64px;border:1.5px solid rgba(48,28,29,0.3);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:4px 6px;outline:none;";
+        inp.addEventListener('input', () => {
+          state.days[d.iso] = { mode: 'other', hours: parseFloat(inp.value) || 0 };
+          renderDaysTotal();
+          renderAllocations();
+        });
+        row.appendChild(inp);
+      }
+      daysGrid.appendChild(row);
+    });
+    renderDaysTotal();
+  }
+
+  function renderDaysTotal() {
+    const t = totalDayHours();
+    daysTotal.textContent = 'Total: ' + t + ' hours';
+  }
+
+  // ── Section 4: Allocate hours ──
+  const s4 = document.createElement('div');
+  const s4lbl = document.createElement('div');
+  s4lbl.style.cssText = sectionLabelCss;
+  s4lbl.textContent = '4. Allocate hours';
+  s4.appendChild(s4lbl);
+  const allocList = document.createElement('div');
+  allocList.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+  s4.appendChild(allocList);
+  const allocStatus = document.createElement('div');
+  allocStatus.style.cssText = "font-family:'Space Mono',monospace;font-size:12px;padding:8px 4px;font-weight:bold;border-top:1px solid rgba(48,28,29,0.15);margin-top:6px;";
+  s4.appendChild(allocStatus);
+  body.appendChild(s4);
+
+  function renderAllocations() {
+    allocList.innerHTML = '';
+    if (state.selectedProjectIds.size === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);font-style:italic;";
+      empty.textContent = 'Select FL Tasks above to allocate hours.';
+      allocList.appendChild(empty);
+      renderAllocStatus();
+      return;
+    }
+    state.selectedProjectIds.forEach(id => {
+      const p = (typeof getProject === 'function') ? getProject(id) : null;
+      const row = document.createElement('div');
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(48,28,29,0.03);";
+      const lbl = document.createElement('div');
+      lbl.style.cssText = "flex:1;min-width:120px;font-family:'Space Mono',monospace;font-size:12px;color:#301C1D;line-height:1.4;";
+      if (p) {
+        lbl.innerHTML = `<strong>${escapeHtml(p.name || '')}</strong>` + (p.csvLineItem ? `<br><span style="color:rgba(48,28,29,0.5);font-size:10px;">${escapeHtml(p.csvLineItem)}</span>` : '');
+      } else {
+        lbl.textContent = '(unknown)';
+      }
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.step = '0.25';
+      inp.value = state.allocations[id] || '';
+      inp.placeholder = 'h';
+      inp.style.cssText = "width:80px;border:1.5px solid rgba(48,28,29,0.3);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:4px 6px;outline:none;text-align:right;";
+      inp.addEventListener('input', () => {
+        state.allocations[id] = parseFloat(inp.value) || 0;
+        renderAllocStatus();
+      });
+      row.appendChild(lbl);
+      row.appendChild(inp);
+      const unit = document.createElement('span');
+      unit.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.5);";
+      unit.textContent = 'h';
+      row.appendChild(unit);
+      allocList.appendChild(row);
+    });
+    renderAllocStatus();
+  }
+
+  function renderAllocStatus() {
+    const total = totalDayHours();
+    let allocated = 0;
+    state.selectedProjectIds.forEach(id => { allocated += Number(state.allocations[id]) || 0; });
+    const diff = allocated - total;
+    let msg, color;
+    if (state.selectedProjectIds.size === 0) {
+      msg = 'Allocated: 0 / ' + total;
+      color = 'rgba(48,28,29,0.5)';
+    } else if (Math.abs(diff) < 0.01) {
+      msg = 'Allocated: ' + allocated + ' / ' + total + ' ✓';
+      color = '#7FA497';
+    } else if (diff < 0) {
+      msg = 'Allocated: ' + allocated + ' / ' + total + ' — under by ' + (-diff) + 'h';
+      color = '#F7B338';
+    } else {
+      msg = 'Allocated: ' + allocated + ' / ' + total + ' — over by ' + diff + 'h';
+      color = '#E94D32';
+    }
+    allocStatus.textContent = msg;
+    allocStatus.style.color = color;
+  }
+
+  // ── Section 5: Month Narrative (shared across all weeks in this month) ──
+  const s5 = document.createElement('div');
+  const s5lbl = document.createElement('div');
+  s5lbl.style.cssText = sectionLabelCss;
+  s5lbl.textContent = '5. Month narrative';
+  s5.appendChild(s5lbl);
+  const s5sub = document.createElement('div');
+  s5sub.style.cssText = sectionSubCss;
+  s5sub.textContent = 'One entry per FL Task per month — shared across every week in this month. Edits here roll over to next week and the week after.';
+  s5.appendChild(s5sub);
+  const narrWrap = document.createElement('div');
+  narrWrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+  s5.appendChild(narrWrap);
+  body.appendChild(s5);
+
+  function renderNarratives() {
+    narrWrap.innerHTML = '';
+    if (state.selectedProjectIds.size === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);font-style:italic;";
+      empty.textContent = 'Select FL Tasks above to write month narratives.';
+      narrWrap.appendChild(empty);
+      return;
+    }
+    state.selectedProjectIds.forEach(id => {
+      const p = (typeof getProject === 'function') ? getProject(id) : null;
+      const block = document.createElement('div');
+      block.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+      const lbl = document.createElement('div');
+      lbl.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.04em;";
+      if (p) {
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'color:#5b8bd4;font-weight:bold;';
+        nameSpan.textContent = p.name || '(unnamed)';
+        lbl.appendChild(nameSpan);
+        lbl.appendChild(document.createTextNode(' · '));
+        const monthSpan = document.createElement('span');
+        monthSpan.style.cssText = 'color:rgba(48,28,29,0.55);font-size:10px;';
+        monthSpan.textContent = wbFmtMonthLabel(monthKey);
+        lbl.appendChild(monthSpan);
+      } else {
+        lbl.textContent = '(unknown FL Task)';
+      }
+      const ta = document.createElement('textarea');
+      ta.placeholder = 'A running month-level narrative for this task…';
+      ta.value = wbGetNarrative(monthKey, id);
+      ta.style.cssText = "width:100%;min-height:60px;border:1.5px solid rgba(91,139,212,0.35);background:rgba(91,139,212,0.05);color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;box-sizing:border-box;resize:vertical;";
+      // Debounce a bit; also save on blur
+      let saveTimer;
+      ta.addEventListener('input', () => {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => wbSetNarrative(monthKey, id, ta.value), 400);
+      });
+      ta.addEventListener('blur', () => {
+        clearTimeout(saveTimer);
+        wbSetNarrative(monthKey, id, ta.value);
+      });
+      block.appendChild(lbl);
+      block.appendChild(ta);
+      narrWrap.appendChild(block);
+    });
+  }
+
+  renderProjList();
+  renderDescriptions();
+  renderNarratives();
+  renderDays();
+  renderAllocations();
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.style.cssText = 'padding:12px 18px;border-top:1px solid rgba(48,28,29,0.15);display:flex;justify-content:space-between;flex-shrink:0;background:#FFFEE7;gap:8px;';
+  const delBtn = document.createElement('button');
+  delBtn.textContent = existing ? '× Delete Week' : '';
+  delBtn.style.cssText = existing
+    ? "background:none;border:1.5px solid rgba(233,77,50,0.5);color:#E94D32;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;"
+    : 'visibility:hidden;';
+  delBtn.onclick = () => {
+    if (!confirm('Delete the log for Week ' + targetWeek.num + '?')) return;
+    const data = loadWeeklyBilling();
+    delete data[weekKey];
+    if (existingKey && existingKey !== weekKey) delete data[existingKey];
+    saveWeeklyBilling(data);
+    overlay.remove();
+    renderWeeklyBilling();
+  };
+  const rightWrap = document.createElement('div');
+  rightWrap.style.cssText = 'display:flex;gap:8px;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;";
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save Week';
+  saveBtn.style.cssText = "background:#301C1D;border:none;color:#FFFEE7;font-family:'Archivo Black',sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 18px;cursor:pointer;";
+  saveBtn.onclick = () => {
+    if (state.selectedProjectIds.size === 0) {
+      if (!confirm('No FL Tasks selected. Save empty week anyway?')) return;
+    }
+    const total = totalDayHours();
+    let allocated = 0;
+    state.selectedProjectIds.forEach(id => { allocated += Number(state.allocations[id]) || 0; });
+    if (Math.abs(allocated - total) > 0.01) {
+      const msg = allocated > total
+        ? 'Allocated hours (' + allocated + ') exceed total worked (' + total + '). Save anyway?'
+        : 'Allocated hours (' + allocated + ') are less than total worked (' + total + '). Save anyway?';
+      if (!confirm(msg)) return;
+    }
+    const data = loadWeeklyBilling();
+    const entry = {
+      weekStart: weekKey,
+      weekEnd: wbFmtIso(targetWeek.end),
+      weekNum: targetWeek.num,
+      monthKey,
+      days: state.days,
+      projects: [],
+      updatedAt: new Date().toISOString(),
+    };
+    state.selectedProjectIds.forEach(id => {
+      const p = (typeof getProject === 'function') ? getProject(id) : null;
+      entry.projects.push({
+        projectId: id,
+        // Snapshot category + lineItem so the row is still meaningful if the
+        // project is renamed / completed / deleted later.
+        category: p ? (p.csvCategory || '') : '',
+        lineItem: p ? (p.csvLineItem || '') : '',
+        description: state.descriptions[id] || '',
+        hours: Number(state.allocations[id]) || 0,
+      });
+    });
+    // If a legacy entry existed under a different weekStart key (e.g. old
+    // Sat-Fri scheme), remove it so the migrated entry is the sole record.
+    if (existingKey && existingKey !== weekKey) delete data[existingKey];
+    data[weekKey] = entry;
+    saveWeeklyBilling(data);
+    overlay.remove();
+    wbActiveMonth = monthKey;
+    renderWeeklyBilling();
+  };
+  rightWrap.appendChild(cancelBtn);
+  rightWrap.appendChild(saveBtn);
+  footer.appendChild(delBtn);
+  footer.appendChild(rightWrap);
+  box.appendChild(footer);
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+window.showLogWeeklyHoursModal = showLogWeeklyHoursModal;
+
+// CSV export — active month only, one row per (week, line-item entry)
+function downloadWeeklyBillingCSV() {
+  const monthKey = wbActiveMonth;
+  if (!monthKey) return;
+  const data = loadWeeklyBilling();
+  const weeks = wbGetWeeksForMonth(monthKey);
+  const q = s => '"' + String(s == null ? '' : s).replace(/"/g,"'") + '"';
+  // Normalize helper (mirrors renderWeeklyBilling's wbNormalizeItems)
+  const normalize = entry => {
+    if (!entry) return [];
+    const items = entry.items || entry.projects || [];
+    return items.map(e => {
+      let cat, li, projectId = e.projectId || null;
+      if (e.category != null && e.lineItem != null) { cat = e.category; li = e.lineItem; }
+      else if (projectId && typeof getProject === 'function') {
+        const p = getProject(projectId);
+        cat = p ? (p.csvCategory || '') : '';
+        li  = p ? (p.csvLineItem || '') : '';
+      } else { cat = ''; li = ''; }
+      let matched = projectId && typeof getProject === 'function' ? getProject(projectId) : null;
+      if (!matched && typeof loadProjects === 'function') {
+        const matches = loadProjects().filter(p => p.isFL && p.csvCategory === cat && p.csvLineItem === li);
+        if (matches.length === 1) matched = matches[0];
+      }
+      return { category: cat, lineItem: li, description: e.description || '', hours: Number(e.hours) || 0, matchedProject: matched };
+    });
+  };
+  let csv = 'week_num,date_range,category,line_item,task_fl_name,project_id,description,month_narrative,days_total,hours\n';
+  weeks.forEach(week => {
+    const found = wbGetEntryForWeek(data, week);
+    if (!found) return;
+    const entry = found.entry;
+    const dayTotal = Object.values(entry.days || {}).reduce((s, d) => s + (Number(d.hours) || 0), 0);
+    normalize(entry).forEach(pe => {
+      const proj = pe.matchedProject;
+      const dateRange = wbFmtIso(week.start) + ' to ' + wbFmtIso(week.end);
+      const narrative = proj ? wbGetNarrative(monthKey, proj.id) : '';
+      csv += `${week.num},${q(dateRange)},${q(pe.category)},${q(pe.lineItem)},${q(proj?proj.name||'':'')},${q(proj?proj.externalId||'':'')},${q(pe.description)},${q(narrative)},${dayTotal},${pe.hours}\n`;
+    });
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'weekly_billing_' + monthKey + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+window.downloadWeeklyBillingCSV = downloadWeeklyBillingCSV;
 
 // ══════════════════════════════════════════
 // ── PROJECTS PANE (Edit tab) ──
