@@ -15131,6 +15131,48 @@ function showLogWeeklyHoursModal(weekKeyArg) {
   body.style.cssText = 'padding:16px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;flex:1;';
   box.appendChild(body);
 
+  // Autosave: debounced write of the current state to localStorage. Every
+  // change (checkbox toggle, description keystroke, day radio, hour input,
+  // allocation) triggers this, so accidental close/refresh doesn't lose work.
+  let _wbAutosaveTimer = null;
+  function wbAutosaveEntry() {
+    clearTimeout(_wbAutosaveTimer);
+    _wbAutosaveTimer = setTimeout(() => {
+      const hasContent = state.selectedProjectIds.size > 0 ||
+        Object.values(state.days).some(d => (Number(d.hours) || 0) > 0 || d.mode === 'full' || d.mode === 'half' || d.mode === 'other');
+      if (!hasContent) return; // don't create an empty entry from just opening the modal
+      const data = loadWeeklyBilling();
+      const entry = {
+        weekStart: weekKey,
+        weekEnd: wbFmtIso(targetWeek.end),
+        weekNum: targetWeek.num,
+        monthKey,
+        days: state.days,
+        projects: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state.selectedProjectIds.forEach(id => {
+        entry.projects.push({
+          projectId: id,
+          description: state.descriptions[id] || '',
+          hours: Number(state.allocations[id]) || 0,
+        });
+      });
+      if (existingKey && existingKey !== weekKey) delete data[existingKey];
+      data[weekKey] = entry;
+      saveWeeklyBilling(data);
+      // Flash the indicator
+      const ind = document.getElementById('wb-saved-indicator');
+      if (ind) {
+        ind.textContent = '✓ Saved';
+        ind.style.color = '#7FA497';
+        ind.style.opacity = '1';
+        clearTimeout(ind._fadeTimer);
+        ind._fadeTimer = setTimeout(() => { ind.style.opacity = '0.35'; }, 900);
+      }
+    }, 400);
+  }
+
   // Dramatic hero title — sits at the top of the scrollable body so it
   // scrolls away as the user works through the sections below. The compact
   // yellow header (Week N + prev/next/close) stays pinned above.
@@ -15256,6 +15298,7 @@ function showLogWeeklyHoursModal(weekKeyArg) {
             renderDescriptions();
             renderNarratives();
             renderAllocations();
+            wbAutosaveEntry();
           });
           row.appendChild(cb);
           const label = document.createElement('span');
@@ -15312,7 +15355,7 @@ function showLogWeeklyHoursModal(weekKeyArg) {
       ta.placeholder = 'Short description of what you did…';
       ta.value = state.descriptions[id] || '';
       ta.style.cssText = "width:100%;min-height:52px;border:1.5px solid rgba(48,28,29,0.25);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;box-sizing:border-box;resize:vertical;";
-      ta.addEventListener('input', () => { state.descriptions[id] = ta.value; });
+      ta.addEventListener('input', () => { state.descriptions[id] = ta.value; wbAutosaveEntry(); });
       block.appendChild(lbl);
       block.appendChild(ta);
       descWrap.appendChild(block);
@@ -15366,6 +15409,7 @@ function showLogWeeklyHoursModal(weekKeyArg) {
           else                      state.days[d.iso] = { mode: 'other', hours: state.days[d.iso] ? state.days[d.iso].hours : 0 };
           renderDays();
           renderAllocations();
+          wbAutosaveEntry();
         });
         wrap.appendChild(r);
         wrap.appendChild(document.createTextNode(text));
@@ -15387,6 +15431,7 @@ function showLogWeeklyHoursModal(weekKeyArg) {
           state.days[d.iso] = { mode: 'other', hours: parseFloat(inp.value) || 0 };
           renderDaysTotal();
           renderAllocations();
+          wbAutosaveEntry();
         });
         row.appendChild(inp);
       }
@@ -15445,6 +15490,7 @@ function showLogWeeklyHoursModal(weekKeyArg) {
       inp.addEventListener('input', () => {
         state.allocations[id] = parseFloat(inp.value) || 0;
         renderAllocStatus();
+        wbAutosaveEntry();
       });
       row.appendChild(lbl);
       row.appendChild(inp);
@@ -15567,9 +15613,15 @@ function showLogWeeklyHoursModal(weekKeyArg) {
     renderWeeklyBilling();
   };
   const rightWrap = document.createElement('div');
-  rightWrap.style.cssText = 'display:flex;gap:8px;';
+  rightWrap.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  const savedInd = document.createElement('span');
+  savedInd.id = 'wb-saved-indicator';
+  savedInd.style.cssText = "font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.4);letter-spacing:0.08em;opacity:0.35;transition:opacity 0.25s;margin-right:6px;";
+  savedInd.textContent = 'Autosave on';
+  rightWrap.appendChild(savedInd);
   const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'Cancel';
+  cancelBtn.textContent = 'Close';
+  cancelBtn.title = 'Changes save automatically as you type';
   cancelBtn.style.cssText = "background:none;border:1.5px solid rgba(48,28,29,0.25);color:#301C1D;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:8px 14px;cursor:pointer;";
   cancelBtn.onclick = () => overlay.remove();
   const saveBtn = document.createElement('button');
