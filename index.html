@@ -14929,8 +14929,10 @@ function renderWeeklyBilling() {
     });
   }
 
-  // Weekly blocks
+  // Weekly blocks — compact summary only. Per-week item tables have been
+  // replaced by one combined table below (see combinedRows).
   let monthTotalHrs = 0;
+  const combinedRows = [];
   weeks.forEach(week => {
     const key = wbFmtIso(week.start);
     const found = wbGetEntryForWeek(data, week);
@@ -14939,16 +14941,28 @@ function renderWeeklyBilling() {
     const normItems = wbNormalizeItems(entry);
     const projTotal = normItems.reduce((s, i) => s + i.hours, 0);
     monthTotalHrs += projTotal;
+    // Collect items for the combined table
+    normItems.forEach(pe => combinedRows.push({ week, pe, dayTotal, projTotal }));
+
+    // Status hint on the header
+    let statusText;
+    if (!entry) {
+      statusText = 'Not logged yet';
+    } else {
+      const diff = projTotal - dayTotal;
+      const balance = Math.abs(diff) < 0.01 ? '✓' : (diff < 0 ? `under ${-diff}h` : `over ${diff}h`);
+      statusText = `${dayTotal}h logged · ${projTotal}h allocated · ${balance}`;
+    }
 
     html += `
-      <div style="background:#FFFEE7;border:2px solid rgba(48,28,29,0.15);margin-bottom:12px;">
+      <div style="background:#FFFEE7;border:2px solid rgba(48,28,29,0.15);margin-bottom:8px;">
         <div style="background:#301C1D;color:#F7B338;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
           <div>
             <span style="font-family:'Archivo Black',sans-serif;font-size:14px;letter-spacing:0.08em;text-transform:uppercase;">Week ${week.num}</span>
             <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.7);margin-left:8px;">${wbFmtShort(week.start)} – ${wbFmtShort(week.end)}</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.75);">${entry ? `${dayTotal}h logged · ${projTotal}h allocated` : 'Not logged yet'}</span>
+            <span style="font-family:'Space Mono',monospace;font-size:11px;color:rgba(255,254,231,0.75);">${statusText}</span>
             <button onclick="showLogWeeklyHoursModal('${key}')" style="background:${entry?'none':'#E94D32'};border:${entry?'1.5px solid rgba(255,254,231,0.35)':'none'};color:${entry?'#F7B338':'#FFFEE7'};font-family:'Space Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;">${entry ? '✎ Edit' : '+ Log'}</button>
           </div>
         </div>
@@ -14959,38 +14973,48 @@ function renderWeeklyBilling() {
         const dInfo = (entry.days || {})[d.iso];
         return `<span style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.7);margin-right:10px;">${d.dow} ${d.date.getDate()}: <strong>${dInfo ? dInfo.hours + 'h' : '—'}</strong></span>`;
       }).join('');
-      html += `<div style="padding:8px 14px;border-bottom:1px solid rgba(48,28,29,0.1);background:rgba(91,139,212,0.05);">${dayStrip}</div>`;
-
-      // Line items (normalized to a shared shape whether legacy or new-format)
-      if (normItems.length === 0) {
-        html += `<div style="padding:12px 14px;font-family:'Space Mono',monospace;font-size:11px;color:rgba(48,28,29,0.4);font-style:italic;">No line items logged for this week.</div>`;
-      } else {
-        html += `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:12px;">
-          <thead><tr style="background:#f5f5f0;">
-            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Category</th>
-            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Line Item</th>
-            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Task (FL Name)</th>
-            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Project ID</th>
-            <th style="padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Description</th>
-            <th style="padding:7px 12px;text-align:right;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);">Hours</th>
-          </tr></thead>
-          <tbody>`;
-        normItems.forEach(pe => {
-          const proj = pe.matchedProject;
-          html += `<tr>
-            <td style="padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(pe.category)}</td>
-            <td style="padding:8px 12px;color:rgba(48,28,29,0.75);font-size:11px;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(pe.lineItem)}</td>
-            <td style="padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(proj ? (proj.name || '') : '')}</td>
-            <td style="padding:8px 12px;color:rgba(48,28,29,0.7);font-size:11px;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(proj ? (proj.externalId || '') : '')}</td>
-            <td style="padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);">${escapeHtml(pe.description)}</td>
-            <td style="padding:8px 12px;color:#301C1D;text-align:right;border-bottom:1px solid rgba(48,28,29,0.08);">${pe.hours}</td>
-          </tr>`;
-        });
-        html += `</tbody></table></div>`;
-      }
+      html += `<div style="padding:8px 14px;background:rgba(91,139,212,0.05);">${dayStrip}</div>`;
     }
     html += `</div>`;
   });
+
+  // ── Combined billable table (all weeks in the active month) ──
+  if (combinedRows.length > 0) {
+    const thS = 'padding:7px 12px;text-align:left;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#301C1D;border-bottom:1.5px solid rgba(48,28,29,0.15);background:#f5f5f0;';
+    const tdS = "padding:8px 12px;color:#301C1D;border-bottom:1px solid rgba(48,28,29,0.08);font-family:'Space Mono',monospace;font-size:12px;";
+    html += `
+      <div style="margin-top:14px;background:#FFFEE7;border:2px solid rgba(48,28,29,0.15);">
+        <div style="background:#301C1D;color:#F7B338;padding:10px 14px;font-family:'Archivo Black',sans-serif;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;">All Line Items · ${wbFmtMonthLabel(wbActiveMonth)}</div>
+        <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+          <thead><tr>
+            <th style="${thS}">Week</th>
+            <th style="${thS}">Category</th>
+            <th style="${thS}">Line Item</th>
+            <th style="${thS}">Task (FL Name)</th>
+            <th style="${thS}">Project ID</th>
+            <th style="${thS}">Description</th>
+            <th style="${thS};text-align:right;">Hours</th>
+          </tr></thead>
+          <tbody>`;
+    combinedRows.forEach(r => {
+      const proj = r.pe.matchedProject;
+      html += `<tr>
+        <td style="${tdS}color:rgba(48,28,29,0.6);font-size:11px;letter-spacing:0.04em;">W${r.week.num}</td>
+        <td style="${tdS}">${escapeHtml(r.pe.category)}</td>
+        <td style="${tdS}color:rgba(48,28,29,0.75);font-size:11px;">${escapeHtml(r.pe.lineItem)}</td>
+        <td style="${tdS}">${escapeHtml(proj ? (proj.name || '') : '')}</td>
+        <td style="${tdS}color:rgba(48,28,29,0.7);font-size:11px;">${escapeHtml(proj ? (proj.externalId || '') : '')}</td>
+        <td style="${tdS}">${escapeHtml(r.pe.description)}</td>
+        <td style="${tdS}text-align:right;">${r.pe.hours}</td>
+      </tr>`;
+    });
+    html += `<tr style="background:#f5f5f0;">
+        <td colspan="6" style="${tdS}font-weight:bold;">Month Total</td>
+        <td style="${tdS}text-align:right;font-weight:bold;">${monthTotalHrs}h</td>
+      </tr></tbody></table></div>
+      </div>
+    `;
+  }
 
   html += `
     <div style="font-family:'Space Mono',monospace;font-size:12px;color:rgba(255,254,231,0.65);letter-spacing:0.06em;padding:8px 4px;">Month total allocated: <strong style="color:#F7B338;">${monthTotalHrs}h</strong> (${(monthTotalHrs/7).toFixed(1)} days at 7h/day)</div>
@@ -15019,9 +15043,10 @@ function renderWeeklyBilling() {
       hdr.innerHTML = `<span>Month Narrative</span><span style="font-family:'Space Mono',monospace;font-size:10px;color:rgba(48,28,29,0.55);letter-spacing:0.06em;text-transform:none;">One entry per FL Task — shared across every week in ${wbFmtMonthLabel(wbActiveMonth)}. Edits save automatically.</span>`;
       wrap.appendChild(hdr);
       const body = document.createElement('div');
-      body.style.cssText = 'padding:12px 14px;display:flex;flex-direction:column;gap:10px;';
+      body.style.cssText = 'padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;';
       wrap.appendChild(body);
-      // Sort projects by CSV category order, then by name
+      // Sort projects by CSV category order, then by name — so all AQUATIC
+      // FRAMEWORK tasks group first in the grid, then SE FireMap, etc.
       const csvOrder = FL_BILLING_DATA.map(c => c.category);
       const list = Array.from(projectIdsInMonth).map(id => getProject(id)).filter(Boolean);
       list.sort((a, b) => {
@@ -15032,14 +15057,15 @@ function renderWeeklyBilling() {
       });
       list.forEach(p => {
         const block = document.createElement('div');
-        block.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+        block.style.cssText = 'display:flex;flex-direction:column;gap:4px;min-width:0;';
         const lbl = document.createElement('div');
-        lbl.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.04em;";
-        lbl.innerHTML = `<strong style="color:#5b8bd4;">${escapeHtml(p.name)}</strong>` + (p.csvLineItem ? ` <span style="color:rgba(48,28,29,0.55);font-size:10px;">— ${escapeHtml(p.csvLineItem)}</span>` : '');
+        lbl.style.cssText = "font-family:'Space Mono',monospace;font-size:11px;color:#301C1D;letter-spacing:0.04em;line-height:1.3;";
+        const catTag = p.csvCategory ? `<div style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(48,28,29,0.5);margin-bottom:2px;">${escapeHtml(p.csvCategory)}</div>` : '';
+        lbl.innerHTML = catTag + `<strong style="color:#5b8bd4;">${escapeHtml(p.name)}</strong>`;
         const ta = document.createElement('textarea');
         ta.value = wbGetNarrative(wbActiveMonth, p.id);
-        ta.placeholder = 'What has this task looked like across the month so far?';
-        ta.style.cssText = "width:100%;min-height:52px;border:1.5px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;box-sizing:border-box;resize:vertical;";
+        ta.placeholder = 'This month…';
+        ta.style.cssText = "width:100%;min-height:70px;border:1.5px solid rgba(48,28,29,0.2);background:#FFFEE7;color:#301C1D;font-family:'Space Mono',monospace;font-size:12px;padding:6px 8px;outline:none;box-sizing:border-box;resize:vertical;";
         let saveTimer;
         ta.addEventListener('input', () => {
           clearTimeout(saveTimer);
@@ -15710,7 +15736,8 @@ function downloadWeeklyBillingCSV() {
       return { category: cat, lineItem: li, description: e.description || '', hours: Number(e.hours) || 0, matchedProject: matched };
     });
   };
-  let csv = 'week_num,date_range,category,line_item,task_fl_name,project_id,description,month_narrative,days_total,hours\n';
+  let csv = 'week_num,date_range,category,line_item,task_fl_name,project_id,description,days_total,hours\n';
+  const projectsInMonth = new Set();
   weeks.forEach(week => {
     const found = wbGetEntryForWeek(data, week);
     if (!found) return;
@@ -15719,10 +15746,38 @@ function downloadWeeklyBillingCSV() {
     normalize(entry).forEach(pe => {
       const proj = pe.matchedProject;
       const dateRange = wbFmtIso(week.start) + ' to ' + wbFmtIso(week.end);
-      const narrative = proj ? wbGetNarrative(monthKey, proj.id) : '';
-      csv += `${week.num},${q(dateRange)},${q(pe.category)},${q(pe.lineItem)},${q(proj?proj.name||'':'')},${q(proj?proj.externalId||'':'')},${q(pe.description)},${q(narrative)},${dayTotal},${pe.hours}\n`;
+      csv += `${week.num},${q(dateRange)},${q(pe.category)},${q(pe.lineItem)},${q(proj?proj.name||'':'')},${q(proj?proj.externalId||'':'')},${q(pe.description)},${dayTotal},${pe.hours}\n`;
+      if (proj) projectsInMonth.add(proj.id);
     });
   });
+
+  // ── Month Narrative block — appended as its own mini-table below the
+  // main data so each narrative appears once (not repeated across every
+  // hours row). Reads cleanly when opened in Excel / Google Sheets.
+  if (projectsInMonth.size > 0) {
+    const narratives = wbLoadNarratives();
+    const csvCatOrder = FL_BILLING_DATA.map(c => c.category);
+    const rows = Array.from(projectsInMonth)
+      .map(id => getProject(id))
+      .filter(Boolean)
+      .sort((a, b) => {
+        const ai = csvCatOrder.indexOf(a.csvCategory || ''), bi = csvCatOrder.indexOf(b.csvCategory || '');
+        const ac = ai === -1 ? 999 : ai, bc = bi === -1 ? 999 : bi;
+        if (ac !== bc) return ac - bc;
+        return (a.name || '').localeCompare(b.name || '');
+      })
+      .map(p => ({ p, narr: (narratives[monthKey + '|' + p.id] || '').trim() }))
+      .filter(r => r.narr);
+    if (rows.length > 0) {
+      csv += '\n';
+      csv += 'Month Narrative\n';
+      csv += 'category,task_fl_name,narrative\n';
+      rows.forEach(({ p, narr }) => {
+        csv += `${q(p.csvCategory || '')},${q(p.name || '')},${q(narr)}\n`;
+      });
+    }
+  }
+
   const blob = new Blob([csv], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
