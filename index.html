@@ -14888,7 +14888,8 @@ function renderWeeklyBilling() {
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
         <h2 style="font-family:'Archivo Black',sans-serif;font-size:22px;color:#FFFEE7;margin:0;letter-spacing:0.04em;text-transform:uppercase;">Weekly Billing</h2>
         <button onclick="showLogWeeklyHoursModal()" style="background:#E94D32;border:none;color:#FFFEE7;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 16px;cursor:pointer;">+ Log This Week</button>
-        <button onclick="downloadWeeklyBillingCSV()" style="background:none;border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.7);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:7px 12px;cursor:pointer;">↓ Export CSV</button>
+        <button onclick="downloadWeeklyBillingInvoice()" style="background:#F7B338;border:none;color:#301C1D;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 16px;cursor:pointer;" title="Formatted invoice — opens in Excel, Numbers or Google Sheets">↓ Invoice</button>
+        <button onclick="downloadWeeklyBillingCSV()" style="background:none;border:1.5px solid rgba(255,254,231,0.3);color:rgba(255,254,231,0.7);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;padding:7px 12px;cursor:pointer;" title="Same invoice layout as plain CSV">↓ Invoice CSV</button>
       </div>
 
       <div style="display:flex;gap:2px;flex-wrap:wrap;background:#301C1D;padding:2px;width:fit-content;margin-bottom:14px;">
@@ -15708,15 +15709,46 @@ function showLogWeeklyHoursModal(weekKeyArg) {
   document.body.appendChild(overlay);
 }
 window.showLogWeeklyHoursModal = showLogWeeklyHoursModal;
+// ══════════════════════════════════════════
+// ── INVOICE EXPORT (Weekly Billing) ──
+// The active month's logged hours, laid out as a drop-in invoice /
+// timesheet rather than a flat data dump: title block, contact block,
+// a "Billed Hours" table grouped by FL Category with subtotals, the
+// weekly narrative on every line, and the Month Narrative as its own
+// section. Two exports share one model:
+//   downloadWeeklyBillingCSV()     → invoice-shaped CSV (opens anywhere)
+//   downloadWeeklyBillingInvoice() → same layout, styled, for Excel /
+//                                    Numbers / Google Sheets
+// ══════════════════════════════════════════
 
-// CSV export — active month only, one row per (week, line-item entry)
-function downloadWeeklyBillingCSV() {
-  const monthKey = wbActiveMonth;
-  if (!monthKey) return;
+// Header fields for the contact block. Blank values still print their
+// label row (same as the paper form) — fill them in once here and every
+// export carries them.
+const WB_INVOICE_PROFILE = {
+  name:           'SAGE VOORHEES',
+  org:            'FL',
+  email:          '',
+  phone:          '',
+  paymentMethod:  '',
+  ppmUsername:    '',
+  mailingAddress: '',
+};
+
+// Federal fiscal year: Oct 1 – Sep 30, named for the year it ends in.
+function wbFiscalYear(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  return m >= 10 ? y + 1 : y;
+}
+
+// Everything an invoice needs for one month, already in print order.
+function wbBuildInvoiceModel(monthKey) {
   const data = loadWeeklyBilling();
   const weeks = wbGetWeeksForMonth(monthKey);
-  const q = s => '"' + String(s == null ? '' : s).replace(/"/g,"'") + '"';
-  // Normalize helper (mirrors renderWeeklyBilling's wbNormalizeItems)
+  const narratives = wbLoadNarratives();
+  const catOrder = FL_BILLING_DATA.map(c => c.category);
+  const catRank = c => { const i = catOrder.indexOf(c || ''); return i === -1 ? 999 : i; };
+
+  // Same normalization the tab renders from (new `items` or legacy `projects`).
   const normalize = entry => {
     if (!entry) return [];
     const items = entry.items || entry.projects || [];
@@ -15730,62 +15762,273 @@ function downloadWeeklyBillingCSV() {
       } else { cat = ''; li = ''; }
       let matched = projectId && typeof getProject === 'function' ? getProject(projectId) : null;
       if (!matched && typeof loadProjects === 'function') {
-        const matches = loadProjects().filter(p => p.isFL && p.csvCategory === cat && p.csvLineItem === li);
-        if (matches.length === 1) matched = matches[0];
+        const m = loadProjects().filter(p => p.isFL && p.csvCategory === cat && p.csvLineItem === li);
+        if (m.length === 1) matched = m[0];
       }
       return { category: cat, lineItem: li, description: e.description || '', hours: Number(e.hours) || 0, matchedProject: matched };
     });
   };
-  let csv = 'week_num,date_range,category,line_item,task_fl_name,project_id,description,days_total,hours\n';
-  const projectsInMonth = new Set();
+
+  const lines = [];
+  const timesheet = [];
+  const projectsInMonth = new Map();
+
   weeks.forEach(week => {
     const found = wbGetEntryForWeek(data, week);
     if (!found) return;
     const entry = found.entry;
-    const dayTotal = Object.values(entry.days || {}).reduce((s, d) => s + (Number(d.hours) || 0), 0);
+    const days = wbListDaysInWeek(week).map(d => ({
+      label: d.dow + ' ' + d.date.getDate(),
+      hours: Number(((entry.days || {})[d.iso] || {}).hours) || 0,
+    }));
+    const dateRange = wbFmtShort(week.start) + ' – ' + wbFmtShort(week.end);
+    timesheet.push({ weekNum: week.num, dateRange, days, total: days.reduce((s, d) => s + d.hours, 0) });
     normalize(entry).forEach(pe => {
-      const proj = pe.matchedProject;
-      const dateRange = wbFmtIso(week.start) + ' to ' + wbFmtIso(week.end);
-      csv += `${week.num},${q(dateRange)},${q(pe.category)},${q(pe.lineItem)},${q(proj?proj.name||'':'')},${q(proj?proj.externalId||'':'')},${q(pe.description)},${dayTotal},${pe.hours}\n`;
-      if (proj) projectsInMonth.add(proj.id);
+      const p = pe.matchedProject;
+      if (p) projectsInMonth.set(p.id, p);
+      lines.push({
+        category:   pe.category,
+        lineItem:   pe.lineItem,
+        task:       p ? (p.name || '') : '',
+        externalId: p ? (p.externalId || '') : '',
+        weekNum:    week.num,
+        dateRange,
+        narrative:  pe.description,   // the weekly narrative
+        hours:      pe.hours,
+      });
     });
   });
 
-  // ── Month Narrative block — appended as its own mini-table below the
-  // main data so each narrative appears once (not repeated across every
-  // hours row). Reads cleanly when opened in Excel / Google Sheets.
-  if (projectsInMonth.size > 0) {
-    const narratives = wbLoadNarratives();
-    const csvCatOrder = FL_BILLING_DATA.map(c => c.category);
-    const rows = Array.from(projectsInMonth)
-      .map(id => getProject(id))
-      .filter(Boolean)
-      .sort((a, b) => {
-        const ai = csvCatOrder.indexOf(a.csvCategory || ''), bi = csvCatOrder.indexOf(b.csvCategory || '');
-        const ac = ai === -1 ? 999 : ai, bc = bi === -1 ? 999 : bi;
-        if (ac !== bc) return ac - bc;
-        return (a.name || '').localeCompare(b.name || '');
-      })
-      .map(p => ({ p, narr: (narratives[monthKey + '|' + p.id] || '').trim() }))
-      .filter(r => r.narr);
-    if (rows.length > 0) {
-      csv += '\n';
-      csv += 'Month Narrative\n';
-      csv += 'category,task_fl_name,narrative\n';
-      rows.forEach(({ p, narr }) => {
-        csv += `${q(p.csvCategory || '')},${q(p.name || '')},${q(narr)}\n`;
-      });
-    }
+  // Group billed lines by FL Category (contract order), then line item, then week.
+  const groups = [];
+  lines.forEach(r => {
+    let g = groups.find(x => x.category === r.category);
+    if (!g) groups.push(g = { category: r.category, rows: [], total: 0 });
+    g.rows.push(r);
+    g.total += r.hours;
+  });
+  groups.sort((a, b) => catRank(a.category) - catRank(b.category) || a.category.localeCompare(b.category));
+  groups.forEach(g => g.rows.sort((a, b) => a.lineItem.localeCompare(b.lineItem) || a.weekNum - b.weekNum));
+
+  // Month narratives — one per FL Task that shows up in a logged week.
+  const monthNarratives = Array.from(projectsInMonth.values())
+    .sort((a, b) => catRank(a.csvCategory) - catRank(b.csvCategory) || (a.name || '').localeCompare(b.name || ''))
+    .map(p => ({
+      category:  p.csvCategory || '',
+      lineItem:  p.csvLineItem || '',
+      task:      p.name || '',
+      narrative: (narratives[monthKey + '|' + p.id] || '').trim(),
+    }))
+    .filter(r => r.narrative);
+
+  return {
+    monthKey,
+    monthLabel: wbFmtMonthLabel(monthKey),
+    monthName:  wbFmtMonthLabel(monthKey).split(' ')[0].toUpperCase(),
+    fiscalYear: wbFiscalYear(monthKey),
+    groups,
+    monthNarratives,
+    timesheet,
+    total: lines.reduce((s, r) => s + r.hours, 0),
+  };
+}
+
+const WB_INVOICE_COLS = ['Category', 'Line-Item Name', 'Task (FL Name)', 'Project ID', 'Week', 'Dates', 'Weekly Narrative', 'Hours'];
+const WB_NARRATIVE_COLS = ['Category', 'Line-Item Name', 'Task (FL Name)', 'Month Narrative'];
+
+function wbInvoiceTitle(inv) {
+  const p = WB_INVOICE_PROFILE;
+  return `${p.name} || ${p.org}, Fiscal Year ${inv.fiscalYear} Timesheets`;
+}
+// Contact block, in the order the paper form lists it.
+function wbInvoiceContactRows(inv) {
+  const p = WB_INVOICE_PROFILE;
+  return [
+    ['Month:', inv.monthName],
+    ['Email:', p.email],
+    ['Phone:', p.phone],
+    ['Preferred Payment Method:', p.paymentMethod],
+    ['PPM Username:', p.ppmUsername],
+    ['Mailing Address:', p.mailingAddress],
+  ];
+}
+
+// ── CSV: the invoice layout, in plain text ──
+// Fixed 8-column grid so section banners, the billed-hours table and the
+// narrative tables all line up when opened in a spreadsheet.
+function downloadWeeklyBillingCSV() {
+  const monthKey = wbActiveMonth;
+  if (!monthKey) return;
+  const inv = wbBuildInvoiceModel(monthKey);
+  const W = WB_INVOICE_COLS.length;
+
+  const q = s => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+  const cell = v => (typeof v === 'number' && isFinite(v)) ? String(v) : q(v);
+  const out = [];
+  const row    = cells => out.push(Array.from({ length: W }, (_, i) => cells[i] == null ? '' : cell(cells[i])).join(','));
+  const blank  = () => out.push(Array(W).fill('').join(','));
+  const banner = text => row([text]);
+
+  banner(wbInvoiceTitle(inv));
+  blank();
+  wbInvoiceContactRows(inv).forEach(([label, value]) => row([label, value]));
+  blank();
+
+  banner('BILLED HOURS');
+  row(WB_INVOICE_COLS);
+  if (inv.groups.length === 0) {
+    row(['— no hours logged for ' + inv.monthLabel + ' —']);
+  } else {
+    inv.groups.forEach(g => {
+      g.rows.forEach(r => row([r.category, r.lineItem, r.task, r.externalId, 'W' + r.weekNum, r.dateRange, r.narrative, r.hours]));
+      row(['', '', '', '', '', '', (g.category || 'Uncategorized') + ' subtotal', g.total]);
+      blank();
+    });
+  }
+  row(['', '', '', '', '', '', 'TOTAL BILLED HOURS', inv.total]);
+  blank();
+
+  banner('MONTH NARRATIVE');
+  row(WB_NARRATIVE_COLS);
+  if (inv.monthNarratives.length === 0) {
+    row(['— none written for ' + inv.monthLabel + ' —']);
+  } else {
+    inv.monthNarratives.forEach(r => row([r.category, r.lineItem, r.task, r.narrative]));
+  }
+  blank();
+
+  banner('WEEKLY TIMESHEET');
+  row(['Week', 'Dates', 'Days Logged', '', '', '', '', 'Hours']);
+  if (inv.timesheet.length === 0) {
+    row(['— no days logged —']);
+  } else {
+    inv.timesheet.forEach(w => row([
+      'W' + w.weekNum, w.dateRange,
+      w.days.map(d => d.label + ': ' + (d.hours ? d.hours + 'h' : '—')).join('  ·  '),
+      '', '', '', '', w.total,
+    ]));
+    row(['', '', '', '', '', '', 'TOTAL DAYS LOGGED', inv.timesheet.reduce((s, w) => s + w.total, 0)]);
   }
 
-  const blob = new Blob([csv], { type: 'text/csv' });
+  wbDownloadBlob(out.join('\n'), 'text/csv;charset=utf-8', 'invoice_' + monthKey + '.csv');
+}
+window.downloadWeeklyBillingCSV = downloadWeeklyBillingCSV;
+
+// ── Styled invoice for Excel / Numbers / Google Sheets ──
+// Excel-readable HTML: keeps the merged title bar, the black section
+// banners and the cream header block, so the download opens already
+// looking like the invoice instead of needing to be formatted by hand.
+function downloadWeeklyBillingInvoice() {
+  const monthKey = wbActiveMonth;
+  if (!monthKey) return;
+  const inv = wbBuildInvoiceModel(monthKey);
+  const W = WB_INVOICE_COLS.length;
+  const e = s => escapeHtml(String(s == null ? '' : s));
+
+  // Palette: the app's ink/cream, matched to the paper invoice.
+  const INK = '#301C1D', CREAM = '#FCEFCB', PAPER = '#FFFEE7', RULE = '#D8C9A6', SOFT = '#F3F0E2';
+  const SANS = "'Archivo Black','Arial Black',Arial,sans-serif";
+  const MONO = "'Space Mono','Courier New',monospace";
+  const base = `font-family:${MONO};font-size:11pt;color:${INK};border:0.5pt solid ${RULE};padding:4pt 6pt;vertical-align:top;mso-number-format:'\\@';`;
+
+  const rows = [];
+  const tr = html => rows.push('<tr>' + html + '</tr>');
+  const full = (html, style) => tr(`<td colspan="${W}" style="${style}">${html}</td>`);
+  const spacer = () => tr(`<td colspan="${W}" style="border:none;height:10pt;"></td>`);
+
+  // Header block — black rule, merged title, contact fields on cream.
+  full('', `background:${INK};height:12pt;border:none;`);
+  full(e(wbInvoiceTitle(inv)),
+    `background:${CREAM};font-family:${SANS};font-size:17pt;font-weight:bold;color:${INK};text-align:center;padding:10pt 6pt;border:none;`);
+  full('', `background:${CREAM};height:8pt;border:none;`);
+  wbInvoiceContactRows(inv).forEach(([label, value]) => tr(
+    `<td colspan="3" style="background:${CREAM};font-family:${SANS};font-size:11pt;color:${INK};padding:4pt 8pt;border:none;">${e(label)}</td>` +
+    `<td colspan="${W - 3}" style="background:${CREAM};font-family:${MONO};font-size:11pt;color:${INK};padding:4pt 8pt;border:none;mso-number-format:'\\@';">${e(value)}</td>`
+  ));
+  full('', `background:${CREAM};height:10pt;border:none;`);
+
+  const bandStyle = `background:${INK};font-family:${SANS};font-size:14pt;color:${PAPER};text-align:center;letter-spacing:1pt;padding:7pt 6pt;border:none;`;
+  const thStyle = `background:${SOFT};font-family:${SANS};font-size:9pt;color:${INK};padding:5pt 6pt;border:0.5pt solid ${RULE};text-align:left;`;
+  const totalStyle = `${base}background:${SOFT};font-weight:bold;`;
+  const emptyStyle = `${base}color:#8A7F72;text-align:center;`;
+  const num = v => `<td style="${base}text-align:right;mso-number-format:'0.##';">${v}</td>`;
+
+  // Billed Hours
+  full('Billed Hours', bandStyle);
+  tr(WB_INVOICE_COLS.map((c, i) => `<td style="${thStyle}${i === W - 1 ? 'text-align:right;' : ''}">${e(c)}</td>`).join(''));
+  if (inv.groups.length === 0) {
+    tr(`<td colspan="${W}" style="${emptyStyle}">— no hours logged for ${e(inv.monthLabel)} —</td>`);
+  } else {
+    inv.groups.forEach(g => {
+      g.rows.forEach(r => tr(
+        [r.category, r.lineItem, r.task, r.externalId, 'W' + r.weekNum, r.dateRange, r.narrative]
+          .map(v => `<td style="${base}">${e(v)}</td>`).join('') + num(r.hours)
+      ));
+      tr(`<td colspan="${W - 1}" style="${totalStyle}text-align:right;">${e((g.category || 'Uncategorized') + ' subtotal')}</td>` +
+         `<td style="${totalStyle}text-align:right;mso-number-format:'0.##';">${g.total}</td>`);
+    });
+  }
+  tr(`<td colspan="${W - 1}" style="${base}background:${INK};color:${PAPER};font-family:${SANS};font-size:11pt;text-align:right;">TOTAL BILLED HOURS</td>` +
+     `<td style="${base}background:${INK};color:${PAPER};font-family:${SANS};font-size:11pt;text-align:right;mso-number-format:'0.##';">${inv.total}</td>`);
+  spacer();
+
+  // Month Narrative
+  full('Month Narrative', bandStyle);
+  tr(WB_NARRATIVE_COLS.map((c, i) =>
+    `<td style="${thStyle}" ${i === WB_NARRATIVE_COLS.length - 1 ? `colspan="${W - 3}"` : ''}>${e(c)}</td>`).join(''));
+  if (inv.monthNarratives.length === 0) {
+    tr(`<td colspan="${W}" style="${emptyStyle}">— none written for ${e(inv.monthLabel)} —</td>`);
+  } else {
+    inv.monthNarratives.forEach(r => tr(
+      [r.category, r.lineItem, r.task].map(v => `<td style="${base}">${e(v)}</td>`).join('') +
+      `<td colspan="${W - 3}" style="${base}">${e(r.narrative)}</td>`
+    ));
+  }
+  spacer();
+
+  // Weekly Timesheet
+  full('Weekly Timesheet', bandStyle);
+  tr(`<td style="${thStyle}">Week</td><td style="${thStyle}">Dates</td>` +
+     `<td colspan="${W - 3}" style="${thStyle}">Days Logged</td>` +
+     `<td style="${thStyle}text-align:right;">Hours</td>`);
+  if (inv.timesheet.length === 0) {
+    tr(`<td colspan="${W}" style="${emptyStyle}">— no days logged —</td>`);
+  } else {
+    inv.timesheet.forEach(w => tr(
+      `<td style="${base}">W${w.weekNum}</td><td style="${base}">${e(w.dateRange)}</td>` +
+      `<td colspan="${W - 3}" style="${base}">${e(w.days.map(d => d.label + ': ' + (d.hours ? d.hours + 'h' : '—')).join('  ·  '))}</td>` +
+      num(w.total)
+    ));
+    tr(`<td colspan="${W - 1}" style="${totalStyle}text-align:right;">TOTAL DAYS LOGGED</td>` +
+       `<td style="${totalStyle}text-align:right;mso-number-format:'0.##';">${inv.timesheet.reduce((s, w) => s + w.total, 0)}</td>`);
+  }
+
+  const widths = [190, 240, 190, 90, 50, 120, 320, 60];
+  const html =
+    '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8">' +
+    '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>' +
+    `<x:Name>${e(inv.monthName)} Invoice</x:Name>` +
+    '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>' +
+    '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->' +
+    `<style>td{mso-data-placement:same-cell;white-space:normal;}</style></head>` +
+    `<body style="background:${PAPER};">` +
+    `<table style="border-collapse:collapse;background:${PAPER};">` +
+    widths.map(w => `<col style="width:${w}px;">`).join('') +
+    rows.join('') +
+    '</table></body></html>';
+
+  wbDownloadBlob(html, 'application/vnd.ms-excel', 'invoice_' + monthKey + '.xls');
+}
+window.downloadWeeklyBillingInvoice = downloadWeeklyBillingInvoice;
+
+function wbDownloadBlob(text, mime, filename) {
+  const blob = new Blob(['\ufeff' + text], { type: mime });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'weekly_billing_' + monthKey + '.csv';
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
 }
-window.downloadWeeklyBillingCSV = downloadWeeklyBillingCSV;
 
 // ══════════════════════════════════════════
 // ── PROJECTS PANE (Edit tab) ──
