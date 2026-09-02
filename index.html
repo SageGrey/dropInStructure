@@ -15789,7 +15789,6 @@ function wbBuildInvoiceModel(monthKey) {
 
   const lines = [];
   const timesheet = [];
-  const projectsInMonth = new Map();
 
   weeks.forEach(week => {
     const found = wbGetEntryForWeek(data, week);
@@ -15803,8 +15802,8 @@ function wbBuildInvoiceModel(monthKey) {
     timesheet.push({ weekNum: week.num, dateRange, days, total: days.reduce((s, d) => s + d.hours, 0) });
     normalize(entry).forEach(pe => {
       const p = pe.matchedProject;
-      if (p) projectsInMonth.set(p.id, p);
       lines.push({
+        projectId:  p ? p.id : null,
         category:   pe.category,
         lineItem:   pe.lineItem,
         task:       p ? (p.name || '') : '',
@@ -15828,16 +15827,29 @@ function wbBuildInvoiceModel(monthKey) {
   groups.sort((a, b) => catRank(a.category) - catRank(b.category) || a.category.localeCompare(b.category));
   groups.forEach(g => g.rows.sort((a, b) => a.lineItem.localeCompare(b.lineItem) || a.weekNum - b.weekNum));
 
-  // Month narratives — one per FL Task that shows up in a logged week.
-  const monthNarratives = Array.from(projectsInMonth.values())
-    .sort((a, b) => catRank(a.csvCategory) - catRank(b.csvCategory) || (a.name || '').localeCompare(b.name || ''))
-    .map(p => ({
-      category:  p.csvCategory || '',
-      lineItem:  p.csvLineItem || '',
-      task:      p.name || '',
-      narrative: (narratives[monthKey + '|' + p.id] || '').trim(),
-    }))
-    .filter(r => r.narrative);
+  // Month summary — one row per FL Task worked this month: its total hours
+  // for the month plus the month narrative. Built from the billed lines
+  // rather than from the project list so every logged hour is represented
+  // exactly once and the Hours column reconciles with TOTAL BILLED HOURS.
+  // Lines that never matched a project are keyed by (category, line item)
+  // so their hours still show up rather than silently dropping out.
+  const summary = new Map();
+  lines.forEach(r => {
+    const key = r.projectId || ('~' + r.category + '|' + r.lineItem);
+    let row = summary.get(key);
+    if (!row) summary.set(key, row = {
+      category:  r.category,
+      lineItem:  r.lineItem,
+      task:      r.task,
+      narrative: r.projectId ? (narratives[monthKey + '|' + r.projectId] || '').trim() : '',
+      hours:     0,
+    });
+    row.hours += r.hours;
+  });
+  const monthNarratives = Array.from(summary.values()).sort((a, b) =>
+    catRank(a.category) - catRank(b.category) ||
+    a.task.localeCompare(b.task) ||
+    a.lineItem.localeCompare(b.lineItem));
 
   return {
     monthKey,
@@ -15852,7 +15864,7 @@ function wbBuildInvoiceModel(monthKey) {
 }
 
 const WB_INVOICE_COLS = ['Category', 'Line-Item Name', 'Task (FL Name)', 'Project ID', 'Week', 'Dates', 'Weekly Narrative', 'Hours'];
-const WB_NARRATIVE_COLS = ['Category', 'Line-Item Name', 'Task (FL Name)', 'Month Narrative'];
+const WB_NARRATIVE_COLS = ['Category', 'Line-Item Name', 'Task (FL Name)', 'Month Narrative', 'Hours'];
 
 function wbInvoiceTitle(inv) {
   const p = WB_INVOICE_PROFILE;
@@ -15907,11 +15919,16 @@ function downloadWeeklyBillingCSV() {
   blank();
 
   banner('MONTH NARRATIVE');
-  row(WB_NARRATIVE_COLS);
+  // 5 logical columns mapped onto the shared 8-column grid: the three
+  // identity columns, the narrative, then hours in the last column so it
+  // lines up under the Hours column of Billed Hours above.
+  const narrRow = c => row([c[0], c[1], c[2], c[3], '', '', '', c[4]]);
+  narrRow(WB_NARRATIVE_COLS);
   if (inv.monthNarratives.length === 0) {
-    row(['— none written for ' + inv.monthLabel + ' —']);
+    row(['— nothing logged for ' + inv.monthLabel + ' —']);
   } else {
-    inv.monthNarratives.forEach(r => row([r.category, r.lineItem, r.task, r.narrative]));
+    inv.monthNarratives.forEach(r => narrRow([r.category, r.lineItem, r.task, r.narrative, r.hours]));
+    row(['', '', '', '', '', '', 'TOTAL HOURS BY TASK', inv.total]);
   }
   blank();
 
@@ -15992,15 +16009,20 @@ function downloadWeeklyBillingInvoice() {
 
   // Month Narrative
   full('Month Narrative', bandStyle);
-  tr(WB_NARRATIVE_COLS.map((c, i) =>
-    `<td style="${thStyle}" ${i === WB_NARRATIVE_COLS.length - 1 ? `colspan="${W - 3}"` : ''}>${e(c)}</td>`).join(''));
+  // Narrative spans the middle so Hours lands in the last column, directly
+  // under the Hours column of Billed Hours above.
+  tr(WB_NARRATIVE_COLS.slice(0, 3).map(c => `<td style="${thStyle}">${e(c)}</td>`).join('') +
+     `<td colspan="${W - 4}" style="${thStyle}">${e(WB_NARRATIVE_COLS[3])}</td>` +
+     `<td style="${thStyle}text-align:right;">${e(WB_NARRATIVE_COLS[4])}</td>`);
   if (inv.monthNarratives.length === 0) {
-    tr(`<td colspan="${W}" style="${emptyStyle}">— none written for ${e(inv.monthLabel)} —</td>`);
+    tr(`<td colspan="${W}" style="${emptyStyle}">— nothing logged for ${e(inv.monthLabel)} —</td>`);
   } else {
     inv.monthNarratives.forEach(r => tr(
       [r.category, r.lineItem, r.task].map(v => `<td style="${base}">${e(v)}</td>`).join('') +
-      `<td colspan="${W - 3}" style="${base}">${e(r.narrative)}</td>`
+      `<td colspan="${W - 4}" style="${base}">${e(r.narrative)}</td>` + num(r.hours)
     ));
+    tr(`<td colspan="${W - 1}" style="${totalStyle}text-align:right;">TOTAL HOURS BY TASK</td>` +
+       `<td style="${totalStyle}text-align:right;mso-number-format:'0.##';">${inv.total}</td>`);
   }
   spacer();
 
