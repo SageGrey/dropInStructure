@@ -12143,6 +12143,19 @@ function gistGetToken() { return localStorage.getItem(GIST_TOKEN_KEY) || ''; }
 function gistGetId()    { return localStorage.getItem(GIST_ID_KEY)    || ''; }
 function gistGetAuto()  { return localStorage.getItem(GIST_AUTO_KEY) === 'true'; }
 
+// fetch() rejects with a bare "Failed to fetch" for every network-layer
+// problem alike — offline, DNS, blocked by an extension, CORS preflight
+// refused. Name the host so the sync log says which one actually failed.
+async function gistFetch(url, opts) {
+  try {
+    return await fetch(url, opts);
+  } catch (e) {
+    let host = url;
+    try { host = new URL(url).host; } catch {}
+    throw new Error(`Could not reach ${host} — ${e.message}`);
+  }
+}
+
 // ── PUSH ──
 async function gistPush() {
   const token = gistGetToken();
@@ -12154,7 +12167,7 @@ async function gistPush() {
     public: false,
     files: { [GIST_FILENAME]: { content: JSON.stringify(data, null, 2) } }
   };
-  const res = await fetch(
+  const res = await gistFetch(
     gistId ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists',
     { method: gistId ? 'PATCH' : 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
@@ -12179,20 +12192,25 @@ async function gistPull() {
   const token = gistGetToken();
   const gistId = gistGetId();
   if (!token || !gistId) throw new Error('Token and Gist ID required');
-  const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+  const res = await gistFetch(`https://api.github.com/gists/${gistId}`, {
     headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const result = await res.json();
   const file = result.files[GIST_FILENAME];
   if (!file) throw new Error(`File "${GIST_FILENAME}" not found in Gist`);
-  // GitHub truncates inline content for large files (~1MB).
-  // Always use raw_url when the file is truncated.
+  // GitHub truncates inline content in the API response at ~1MB; past that
+  // the whole file has to come from raw_url.
+  //
+  // That request must go out WITHOUT an Authorization header. raw_url points
+  // at gist.githubusercontent.com, and an Authorization header is not a
+  // CORS-safelisted one, so adding it turns this into a preflighted request —
+  // which that host does not answer, failing the whole fetch. Raw gist URLs
+  // carry a commit SHA and are directly fetchable anyway, secret gists
+  // included, so no credential is needed here.
   let content = file.content;
   if ((!content || file.truncated) && file.raw_url) {
-    const raw = await fetch(file.raw_url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
+    const raw = await gistFetch(file.raw_url);
     if (!raw.ok) throw new Error(`Failed to fetch full file: HTTP ${raw.status}`);
     content = await raw.text();
   }
